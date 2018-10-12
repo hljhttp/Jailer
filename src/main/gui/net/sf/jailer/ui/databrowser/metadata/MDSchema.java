@@ -134,22 +134,27 @@ public class MDSchema extends MDObject {
 	 * @return tables of schema
 	 */
 	public List<MDTable> getTables() {
-		return getTables(true);
+		return getTables(true, null);
 	}
 
 	private Object getTablesLock = new String("getTablesLock");
 	
 	/**
 	 * Gets tables of schema
+	 * @param afterLoadAction 
 	 * 
 	 * @return tables of schema
 	 */
-	public List<MDTable> getTables(boolean loadTableColumns) {
+	public List<MDTable> getTables(boolean loadTableColumns, Runnable afterLoadAction) {
 		synchronized (getTablesLock) {
 			if (tables == null) {
 				try {
 					tables = new ArrayList<MDTable>();
 					Map<String, Long> estimatedRowCounts = readEstimatedRowCounts();
+					if (estimatedRowCounts.size() > 10000) {
+						// rendering many ERCs is too expensive
+						estimatedRowCounts.clear();
+					}
 					MetaDataSource metaDataSource = getMetaDataSource();
 					synchronized (metaDataSource.getSession().getMetaData()) {
 						ResultSet rs = metaDataSource.readTables(getName());
@@ -179,6 +184,9 @@ public class MDSchema extends MDObject {
 						rs.close();
 						for (Runnable loadJob : loadJobs.values()) {
 							loadTableColumnsQueue.add(loadJob);
+						}
+						if (afterLoadAction != null) {
+							loadTableColumnsQueue.add(afterLoadAction);
 						}
 					}
 					Collections.sort(tables, new Comparator<MDTable>() {
@@ -231,11 +239,11 @@ public class MDSchema extends MDObject {
 	/**
 	 * Asynchronously loads the tables.
 	 */
-	public void loadTables() {
+	public void loadTables(final boolean loadTableColumns, final Runnable afterLoadAction) {
 		loadTablesQueue.add(new Runnable() {
 			@Override
 			public void run() {
-				getTables(false);
+				getTables(loadTableColumns, afterLoadAction);
 			}
 		});
 	}

@@ -1,3 +1,10 @@
+8.0.2
+  - Increased responsiveness and performance of the SQL Console.
+
+8.0.1
+  - Foreign key columns can be set to null if parent row is not exported.
+  - Increased responsiveness and performance of the data browser GUI.
+
 8.0
   - The new "PathFinder" feature allows elaborate finding
     of association paths between tables in complex data models.

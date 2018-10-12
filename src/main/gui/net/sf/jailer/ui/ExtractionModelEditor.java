@@ -313,6 +313,10 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
 
 		closureView.addTabComponent("Closure Border", closureBorderView.getContentPane());
 		closureBorderView.dispose();
+
+		restrDepsView = extractionModelFrame.restrictedDependenciesView.getContentPane();
+		closureView.addTabComponent("Restricted Dependencies", restrDepsView);
+		extractionModelFrame.restrictedDependenciesView.dispose();
 		
 		Container cVContentPane = closureView.getContentPane();
 		closureView.dispose();
@@ -470,6 +474,15 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
 		restrictionEditor.restricted.addActionListener(new ActionListener() {
 			@Override
 			public void actionPerformed(ActionEvent e) {
+				onApply(false);
+			}
+		});
+		restrictionEditor.fkToNullCheckBox.addActionListener(new ActionListener() {
+			@Override
+			public void actionPerformed(ActionEvent e) {
+				if (currentAssociation != null) {
+					currentAssociation.setOrResetFKNullFilter(restrictionEditor.fkToNullCheckBox.isSelected());
+				}
 				onApply(false);
 			}
 		});
@@ -652,7 +665,7 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
 	/**
 	 * The "closure view" component.
 	 */
-	private ClosureView closureView;
+	ClosureView closureView;
 
 	void setOrientation(boolean horizontal) {
 		isHorizontalLayout = horizontal;
@@ -1756,7 +1769,11 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
 	}
 
 	private void initRestrictedDependencyWarningField() {
-		restrictionEditor.restrictedDependencyWarning.setVisible(currentAssociation != null && !ScriptFormat.XML.equals(scriptFormat) && currentAssociation.isInsertDestinationBeforeSource() && currentAssociation.isRestricted());
+		boolean restrictedDep = currentAssociation != null && !ScriptFormat.XML.equals(scriptFormat) && currentAssociation.isInsertDestinationBeforeSource() && currentAssociation.isRestricted();
+		restrictionEditor.restrictedDependencyWarning.setVisible(restrictedDep);
+		restrictionEditor.fkToNullCheckBox.setVisible(restrictedDep);
+		restrictionEditor.fkToNullCheckBox.setEnabled(restrictedDep && currentAssociation.hasNullableFK());
+		restrictionEditor.fkToNullCheckBox.setSelected(restrictedDep && currentAssociation.fkHasNullFilter());
 	}
 
 	/**
@@ -1794,6 +1811,11 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
 				needsSave = true;
 				extractionModelFrame.updateTitle(needsSave);
 			}
+
+			if (restrictionEditor.restricted.isSelected() && currentAssociation.hasNullableFK() && currentAssociation.fkHasNullFilter()) {
+				currentAssociation.setOrResetFKNullFilter(false);
+			}
+
 			String condition;
 			if (restrictionEditor.ignore.getModel().isSelected()) {
 				condition = "ignore";
@@ -2928,7 +2950,9 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
     private javax.swing.JPanel xmlMappingPanel;
     private javax.swing.JButton xmlTagApply;
     // End of variables declaration//GEN-END:variables
-	
+    
+    Container restrDepsView;
+    
 	private Icon dropDownIcon;
 	private Icon conditionEditorIcon;
 	private Icon conditionEditorSelectedIcon;
