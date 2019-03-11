@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2018 the original author or authors.
+ * Copyright 2007 - 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,12 +25,12 @@ public class JailerVersion {
 	/**
 	 * The Jailer version.
 	 */
-	public static final String VERSION = "8.0.2";
+	public static final String VERSION = "8.5.2.0";
 
 	/**
 	 * The Jailer working tables version.
 	 */
-	public static final int WORKING_TABLE_VERSION = 1;
+	public static final int WORKING_TABLE_VERSION = 4;
 
 	/**
 	 * The Jailer application name.

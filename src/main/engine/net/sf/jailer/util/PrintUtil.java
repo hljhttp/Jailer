@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2018 the original author or authors.
+ * Copyright 2007 - 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,6 +41,8 @@ import net.sf.jailer.datamodel.Table;
  */
 public class PrintUtil {
 	
+	public static final String LINE_SEPARATOR = System.getProperty("line.separator", "\n");
+
 	/**
 	 * Converts a set of tables into a string.
 	 * 
@@ -254,4 +256,13 @@ public class PrintUtil {
 		return sb.toString();
 	}
 
+	public static String formatVitalTime(long time) {
+		long et = time / 100;
+		long hs = et % 10;
+		long sec = (et / 10) % 60;
+		long min = (et / 600) % 60;
+		long h = et / 36000;
+		return (h<10? "0" : "") + h + ":" + (min<10? "0" : "") + min + ":" + (sec<10? "0" : "") + sec + "." + hs;
+	}
+	
 }

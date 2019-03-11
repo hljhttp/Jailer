@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2018 the original author or authors.
+ * Copyright 2007 - 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,6 @@ import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.Frame;
 import java.awt.GridBagConstraints;
-import java.awt.Insets;
 import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.Window;
@@ -64,6 +63,7 @@ import javax.swing.DefaultComboBoxModel;
 import javax.swing.DefaultListCellRenderer;
 import javax.swing.Icon;
 import javax.swing.ImageIcon;
+import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
@@ -123,6 +123,7 @@ import net.sf.jailer.ui.syntaxtextarea.RSyntaxTextAreaWithSQLSyntaxStyle;
 import net.sf.jailer.ui.syntaxtextarea.SQLAutoCompletion;
 import net.sf.jailer.ui.syntaxtextarea.SQLCompletionProvider;
 import net.sf.jailer.ui.util.SmallButton;
+import net.sf.jailer.ui.util.UISettings;
 import net.sf.jailer.util.CancellationException;
 import net.sf.jailer.util.CancellationHandler;
 import net.sf.jailer.util.CsvFile;
@@ -147,7 +148,7 @@ public abstract class SQLConsole extends javax.swing.JPanel {
     private Session session;
     MetaDataSource metaDataSource;
     private RSyntaxTextAreaWithSQLSyntaxStyle editorPane;
-    private final MetaDataBasedSQLCompletionProvider provider;
+	private final MetaDataBasedSQLCompletionProvider provider;
     private final BlockingQueue<Runnable> queue = new LinkedBlockingQueue<Runnable>();
     private final Reference<DataModel> datamodel;
     private final ExecutionContext executionContext;
@@ -162,10 +163,12 @@ public abstract class SQLConsole extends javax.swing.JPanel {
 	private JMenuItem menuItemSubstituteVariables;
 	private JMenuItem menuItemAnalyse;
 	private int initialTabbedPaneSelection = 0;
+	private List<? extends SortKey> initialSortKeys = null;
+	private String initialSortKeysSql = null;
 	private int initialTabbedPaneSelectionLoc = -1;
 
 	private final String IGNORED_STATEMENTS = "(\\s*/\\s*)";
-
+	
 	/**
 	 * Stops the consumer thread.
 	 */
@@ -204,11 +207,11 @@ public abstract class SQLConsole extends javax.swing.JPanel {
 			}
             @Override
             protected void runBlock() {
-                executeSelectedStatements(false);
+                executeSelectedStatements(false, null, true);
             }
             @Override
             protected void explainBlock() {
-                executeSelectedStatements(true);
+                executeSelectedStatements(true, null, true);
             }
             @Override
             protected void runAll() {
@@ -331,7 +334,6 @@ public abstract class SQLConsole extends javax.swing.JPanel {
         runnAllButton.setIcon(UIUtil.scaleIcon(this, runAllIcon));
         runSQLButton.setToolTipText(runSQLButton.getText() + " - Ctrl-Enter");
         runnAllButton.setToolTipText(runnAllButton.getText() + " - Alt-Enter");
-        runnAllButton.setMargin(new Insets(0, 0, 0, 0));
                 
         scaledCancelIcon = UIUtil.scaleIcon(this, cancelIcon);
         cancelButton.setIcon(scaledCancelIcon);
@@ -536,8 +538,9 @@ public abstract class SQLConsole extends javax.swing.JPanel {
      * @param emptyLineSeparatesStatements 
      * @param locFragmentOffset location of statement fragment, if any
      * @param explain 
+     * @param tabContentPanel the panel to show result (option)
      */
-    protected void executeSQLBlock(final String sqlBlock, final Pair<Integer, Integer> location, final boolean emptyLineSeparatesStatements, final Pair<Integer, Integer> locFragmentOffset, final boolean explain) {
+    protected void executeSQLBlock(final String sqlBlock, final Pair<Integer, Integer> location, final boolean emptyLineSeparatesStatements, final Pair<Integer, Integer> locFragmentOffset, final boolean explain, final TabContentPanel tabContentPanel) {
         if (!running.get()) {
             int lineStartOffset = -1;
             try {
@@ -548,6 +551,7 @@ public abstract class SQLConsole extends javax.swing.JPanel {
                 lineStartOffset = -1;
             }
             disableLastErrorTab();
+            final Pair<Integer, Integer> caretDotMark = new Pair<Integer, Integer>(editorPane.getCaret().getDot(), editorPane.getCaret().getMark());
             final int finalLineStartOffset = lineStartOffset;
             queue.add(new Runnable() {
                 @Override
@@ -593,7 +597,7 @@ public abstract class SQLConsole extends javax.swing.JPanel {
                                 }
                                 status.linesExecuting += countLines(pureSql);
                                 if (sql.trim().length() > 0) {
-                                    executeSQL(pureSql, status, lineStartOffset, explain);
+                                    executeSQL(pureSql, status, lineStartOffset, explain, tabContentPanel, caretDotMark);
                                     if (status.failed) {
                                         if (locFragmentOffset != null) {
                                             if (status.errorPositionIsKnown) {
@@ -634,7 +638,7 @@ public abstract class SQLConsole extends javax.swing.JPanel {
                             String sql = sbToString;
                             if (sql.trim().length() > 0) {
                                 status.linesExecuting += countLines(sql);
-                                executeSQL(sql, status, lineStartOffset, explain);
+                                executeSQL(sql, status, lineStartOffset, explain, tabContentPanel, caretDotMark);
                                 if (!status.failed) {
                                     status.linesExecuted = status.linesExecuting;
                                 }
@@ -678,8 +682,9 @@ public abstract class SQLConsole extends javax.swing.JPanel {
      * @param status the status to update
      * @param statementStartOffset 
      * @param explain 
+     * @param origTabContentPanel the panel to show result (option)
      */
-    private void executeSQL(final String sql, final Status status, int statementStartOffset, final boolean explain) {
+    private void executeSQL(final String sql, final Status status, int statementStartOffset, final boolean explain, final TabContentPanel origTabContentPanel, final Pair<Integer, Integer> caretDotMark) {
         Statement statement = null;
         ResultSet resultSet = null;
         final Status localStatus = new Status();
@@ -689,9 +694,15 @@ public abstract class SQLConsole extends javax.swing.JPanel {
         try {
             status.numStatements++;
             localStatus.numStatements++;
+            UISettings.s3++;
             status.updateView(false);
             statement = session.getConnection().createStatement();
-//            SqlUtil.limitFetchSize(statement, session);
+			if (session.dbms != null) {
+				if (session.dbms.getFetchSize() != null) {
+					statement.setFetchSize(session.dbms.getFetchSize());
+				}
+			}
+			CancellationHandler.reset(SQLConsole.this);
             CancellationHandler.begin(statement, SQLConsole.this);
             long startTime = System.currentTimeMillis();
             sqlStatement = 
@@ -829,9 +840,12 @@ public abstract class SQLConsole extends javax.swing.JPanel {
                         		new TabContentPanel(rb.rowsCount, 
                         				metaDataRenderer,
                         				finalResultSetType,
-                        				explain);
+                        				explain,
+                        				origTabContentPanel == null? null : origTabContentPanel.shimPanel,
+                        				caretDotMark);
                         tabContentPanel.contentPanel.add(rTabContainer);
                         rb.sortColumnsCheckBox.setVisible(true);
+                        rb.sortColumnsPanel.setVisible(false);
                         tabContentPanel.controlsPanel1.add(rb.sortColumnsCheckBox);
                         rb.sortColumnsCheckBox.addActionListener(new java.awt.event.ActionListener() {
                             @Override
@@ -844,9 +858,35 @@ public abstract class SQLConsole extends javax.swing.JPanel {
                             	});
                             }
                         });
-                        tabContentPanel.controlsPanel1.add(rb.loadButton);
-                        rb.loadButton.setVisible(finalLoadButtonIsVisible);
-                        rb.loadButton.setIcon(UIUtil.scaleIcon(SQLConsole.this, runIcon));
+                        final JButton loadButton = new JButton(rb.loadButton.getText(), rb.loadButton.getIcon());
+                        tabContentPanel.loadButton = loadButton;
+                        loadButton.addActionListener(new ActionListener() {
+							@Override
+							public void actionPerformed(ActionEvent e) {
+								tabContentPanel.loadingPanel.setVisible(true);
+								tabContentPanel.repaint();
+								loadButton.setEnabled(false);
+								initialSortKeysSql = sql;
+								try {
+									initialSortKeys = rb.rowsTable.getRowSorter().getSortKeys();
+								} catch (Exception e2) {
+									initialSortKeys = null;
+								}
+								reload(tabContentPanel, sql);
+							}
+						});
+                        tabContentPanel.cancelLoadButton.addActionListener(new ActionListener() {
+							@Override
+							public void actionPerformed(ActionEvent e) {
+								CancellationHandler.cancel(SQLConsole.this);
+								tabContentPanel.loadingPanel.setVisible(false);
+								tabContentPanel.repaint();
+								loadButton.setEnabled(true);
+							}
+						});
+						tabContentPanel.controlsPanel1.add(loadButton);
+                        loadButton.setVisible(finalLoadButtonIsVisible);
+                        loadButton.setIcon(UIUtil.scaleIcon(SQLConsole.this, runIcon));
                         rb.setOnReloadAction(new Runnable() {
 							@Override
 							public void run() {
@@ -864,7 +904,7 @@ public abstract class SQLConsole extends javax.swing.JPanel {
                             stmt = stmt.substring(0, 200) + "...";
                         }
                         tabContentPanel.statementLabel.setText(stmt.replaceAll("\\s+", " "));
-                        rTabContainer = tabContentPanel;
+                        rTabContainer = tabContentPanel.shimPanel;
                         final int MAXLENGTH = 30;
                         String title = shortSQL(sqlE, MAXLENGTH);
                         final int loc = status != null && status.location != null? status.location.a : -1;
@@ -873,7 +913,14 @@ public abstract class SQLConsole extends javax.swing.JPanel {
                         		tabContentPanel.tabbedPane.setSelectedIndex(initialTabbedPaneSelection);
                         	}
                         }
-                        tabContentPanel.tabbedPane.addChangeListener(new ChangeListener() {
+                		try {
+                    		if (initialSortKeys != null && initialSortKeysSql != null && initialSortKeysSql.equals(sql)) {
+                    			rb.getRowsTable().getRowSorter().setSortKeys(initialSortKeys);
+                    		}
+                		} catch (Exception e) {
+                			// ignore
+                		}
+                		tabContentPanel.tabbedPane.addChangeListener(new ChangeListener() {
 							@Override
 							public void stateChanged(ChangeEvent e) {
 								initialTabbedPaneSelection = tabContentPanel.tabbedPane.getSelectedIndex();
@@ -882,13 +929,16 @@ public abstract class SQLConsole extends javax.swing.JPanel {
 							}
 						});
                         removeLastErrorTab();
-                        jTabbedPane1.add(rTabContainer);
-                        jTabbedPane1.setTabComponentAt(jTabbedPane1.indexOfComponent(rTabContainer), getTitlePanel(jTabbedPane1, rTabContainer, title));
-
-                        if (jTabbedPane1.getTabCount() > MAX_TAB_COUNT) {
-                            jTabbedPane1.remove(0);
+                        
+                        if (origTabContentPanel == null) {
+	                        jTabbedPane1.add(rTabContainer);
+	                        jTabbedPane1.setTabComponentAt(jTabbedPane1.indexOfComponent(rTabContainer), getTitlePanel(jTabbedPane1, rTabContainer, title));
+	
+	                        if (jTabbedPane1.getTabCount() > MAX_TAB_COUNT) {
+	                            jTabbedPane1.remove(0);
+	                        }
+	                        jTabbedPane1.setSelectedIndex(jTabbedPane1.getTabCount() - 1);
                         }
-                        jTabbedPane1.setSelectedIndex(jTabbedPane1.getTabCount() - 1);
                         rb.resetRowsTableContainer();
                         jTabbedPane1.repaint();
                     }
@@ -954,6 +1004,13 @@ public abstract class SQLConsole extends javax.swing.JPanel {
 					@Override
 					public void run() {
 		            	removeLastErrorTab();
+		            	if (origTabContentPanel != null) {
+			            	origTabContentPanel.loadingPanel.setVisible(false);
+				            origTabContentPanel.repaint();
+				            if (origTabContentPanel.loadButton != null) {
+				            	origTabContentPanel.loadButton.setEnabled(true);
+				            }
+			            }
 					}
 				});
             }
@@ -999,15 +1056,26 @@ public abstract class SQLConsole extends javax.swing.JPanel {
                         status.errorPositionIsKnown = false;
                     }
                 }
-
-                if (error instanceof CancellationException) {
-                    CancellationHandler.reset(SQLConsole.this);
-                    queue.clear();
-                }
                 status.failed = true;
                 status.error = error;
             }
+            if (error instanceof CancellationException) {
+                CancellationHandler.reset(SQLConsole.this);
+                queue.clear();
+            }
             status.updateView(false);
+            SwingUtilities.invokeLater(new Runnable() {
+				@Override
+				public void run() {
+		            if (origTabContentPanel != null) {
+		            	origTabContentPanel.loadingPanel.setVisible(false);
+			            origTabContentPanel.repaint();
+			            if (origTabContentPanel.loadButton != null) {
+			            	origTabContentPanel.loadButton.setEnabled(true);
+			            }
+		            }
+				}
+			});
         } finally {
             if (explain && session.dbms.getExplainCleanup() != null && !session.dbms.getExplainCleanup().isEmpty()) {
             	if (session.dbms.getExplainPrepare() != null) {
@@ -1436,6 +1504,7 @@ public abstract class SQLConsole extends javax.swing.JPanel {
 
         jSplitPane2.setOrientation(javax.swing.JSplitPane.VERTICAL_SPLIT);
         jSplitPane2.setResizeWeight(0.6);
+        jSplitPane2.setContinuousLayout(true);
         jSplitPane2.setOneTouchExpandable(true);
 
         jPanel2.setLayout(new java.awt.GridBagLayout());
@@ -1519,7 +1588,6 @@ public abstract class SQLConsole extends javax.swing.JPanel {
 
         dummyLabel.setForeground(java.awt.Color.gray);
         dummyLabel.setText(" ");
-        dummyLabel.setToolTipText("");
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 1;
         gridBagConstraints.gridy = 1;
@@ -1552,7 +1620,6 @@ public abstract class SQLConsole extends javax.swing.JPanel {
         jPanel3.add(jTabbedPane1, gridBagConstraints);
 
         jLabel2.setText(" ");
-        jLabel2.setToolTipText("");
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 1;
         gridBagConstraints.gridy = 1;
@@ -1779,57 +1846,147 @@ public abstract class SQLConsole extends javax.swing.JPanel {
      * 
      * @param sql the statement
      * @param execute execute the statement?
+     * @param useLineContinuation 
+     * @param tabContentPanel 
      */
     public void appendStatement(String sql, boolean execute) {
-        String pre = "";
-        int lineCount = editorPane.getLineCount();
-        if (lineCount > 0 && editorPane.getDocument().getLength() > 0) {
-            pre = "\n";
-            if (editorPane.getText(lineCount - 1, lineCount - 1, true).trim().length() > 0) {
-                pre += "\n";
-            }
-        }
-        sql = sql.replaceAll("\\s*\\n", "\n").trim();
-        if (!sql.endsWith(";") && !sql.endsWith(" \\")) {
-            sql += ";";
-        }
-        editorPane.append(pre + sql + "\n");
-        setCaretPosition(editorPane.getDocument().getLength());
+    	appendStatement(sql, execute, null, false);
+    }
+
+    /**
+     * Appends a statement and eventually executes it.
+     * 
+     * @param sql the statement
+     * @param execute execute the statement?
+     * @param tabContentPanel the panel to show result (option)
+     */
+    public void appendStatement(String sql, boolean execute, TabContentPanel tabContentPanel, boolean useLineContinuation) {
+        if (!findAndSetCaretPosition(sql, tabContentPanel)) {
+	        String pre = "";
+	        int lineCount = editorPane.getLineCount();
+	        if (lineCount > 0 && editorPane.getDocument().getLength() > 0) {
+	            pre = "\n";
+	            if (editorPane.getText(lineCount - 1, lineCount - 1, true).trim().length() > 0) {
+	                pre += "\n";
+	            }
+	        }
+	        if (useLineContinuation) {
+	        	sql = addLineContinuation(sql);
+	        } else {
+	        	sql = sql.replaceAll("\\n\\s*\\n", "\n").trim();
+	        }
+	    	if (!sql.endsWith(";") && !sql.endsWith(" \\")) {
+	            sql += ";";
+	        }
+	        editorPane.append(pre + sql.replace("\r", "") + "\n");
+	        setCaretPosition(editorPane.getDocument().getLength());
+    	}
         if (!running.get()) {
             resetStatus();
         }
         if (execute) {
-            executeSelectedStatements(false);
+            executeSelectedStatements(false, tabContentPanel, true);
         }
     }
 
-    private void executeSelectedStatements(boolean explain) {
-        String sql;
-        Pair<Integer, Integer> loc = null;
-        Pair<Integer, Integer> locFragmentOffset = null;
-        Pair<Pair<Integer, Integer>, Pair<Integer, Integer>> locFragment = editorPane.getCurrentStatementFragmentLocation();
-        if (locFragment != null) {
-            loc = locFragment.a;
-            locFragmentOffset = locFragment.b;
-            try {
-                sql = editorPane.getDocument().getText(locFragmentOffset.a, locFragmentOffset.b - locFragmentOffset.a);
-            } catch (BadLocationException e) {
-                e.printStackTrace();
-                return;
-            }
-            if (loc.a < loc.b) {
-                Pattern pattern = Pattern.compile("(\\n\\s*)$", Pattern.DOTALL);
-                Matcher matcher = pattern.matcher(sql);
-                if (matcher.find()) {
-                    loc = new Pair<Integer, Integer>(loc.a, loc.b - 1);
-                }
-            }
-        } else {
-            loc = editorPane.getCurrentStatementLocation(null);
-            sql = editorPane.getText(loc.a, loc.b, true);
+    /**
+     * Searches a statement and sets caret position s.t. current statement equals the given one.
+     */
+    private boolean findAndSetCaretPosition(String statement, TabContentPanel tabContentPanel) {
+        statement = statement.replaceFirst("(;\\s*)+$", "").trim();
+        
+        if (tabContentPanel != null && tabContentPanel.caretDotMark.a != tabContentPanel.caretDotMark.b) {
+	    	try {
+	    		try {
+					editorPane.setCaretPosition(0);
+	    		} catch (Exception e) {
+					// ignore
+				}
+	    		editorPane.setCaretPosition(tabContentPanel.caretDotMark.a);
+		    	editorPane.moveCaretPosition(tabContentPanel.caretDotMark.b);
+				String existingStatement = executeSelectedStatements(false, tabContentPanel, false);
+				if (existingStatement.replaceFirst("(;\\s*)+$", "").trim().equals(statement)) {
+					return true;
+				}
+	    	} catch (/*IllegalArgument*/ Exception e) {
+	    		// ignore
+	    	}
         }
-        if (loc != null) {
-            executeSQLBlock(sql, loc, editorPane.getCaret().getDot() == editorPane.getCaret().getMark(), locFragmentOffset, explain);
+        
+        String[] statementLines = statement.split("\\s*\\n\\s*");
+    	int lineCount = editorPane.getLineCount();
+	    for (int lineNr = 0; lineNr < lineCount; ++lineNr) {
+	    	if (lineNr + statementLines.length <= lineCount) {
+	    		boolean found = true;
+		    	for (int i = 0; i < statementLines.length; ++i) {
+		    		String line = getLineContent(lineNr + i);
+		    		line = line.trim().replaceFirst("(;\\s*)+$", "");
+		    		if (!line.equals(statementLines[i])) {
+		    			found = false;
+		    			break;
+		    		}
+		    	}
+		    	if (found) {
+		    		try {
+						editorPane.setCaretPosition(0);
+		    		} catch (Exception e) {
+						// ignore
+					}
+		    		try {
+						editorPane.setCaretPosition(editorPane.getLineStartOffset(lineNr));
+						String existingStatement = executeSelectedStatements(false, tabContentPanel, false).replaceFirst("(;\\s*)+$", "").trim();
+						if (existingStatement.equals(statement)) {
+							return true;
+						}
+		    		} catch (Exception e) {
+						return false;
+					}
+		    	}
+	    	}
+	    }
+	    
+	    return false;
+    }
+
+    private String getLineContent(int line) {
+    	try {
+    		Segment txt = new Segment();
+    		int sOff = editorPane.getLineStartOffset(line);
+            editorPane.getDocument().getText(sOff, editorPane.getLineEndOffset(line) - sOff, txt);
+            return txt.toString();
+        } catch (BadLocationException e) {
+            return "";
+        }
+    }
+    
+	private String executeSelectedStatements(boolean explain, TabContentPanel tabContentPanel, boolean execute) {
+        try {
+        	String sql;
+	        Pair<Integer, Integer> loc = null;
+	        Pair<Integer, Integer> locFragmentOffset = null;
+	        Pair<Pair<Integer, Integer>, Pair<Integer, Integer>> locFragment = editorPane.getCurrentStatementFragmentLocation();
+	        if (locFragment != null) {
+	            loc = locFragment.a;
+	            locFragmentOffset = locFragment.b;
+	            sql = editorPane.getDocument().getText(locFragmentOffset.a, locFragmentOffset.b - locFragmentOffset.a);
+	            if (loc.a < loc.b) {
+	                Pattern pattern = Pattern.compile("(\\n\\s*)$", Pattern.DOTALL);
+	                Matcher matcher = pattern.matcher(sql);
+	                if (matcher.find()) {
+	                    loc = new Pair<Integer, Integer>(loc.a, loc.b - 1);
+	                }
+	            }
+	        } else {
+	            loc = editorPane.getCurrentStatementLocation(null);
+	            sql = editorPane.getText(loc.a, loc.b, true);
+	        }
+	        if (loc != null && execute) {
+	            executeSQLBlock(sql, loc, editorPane.getCaret().getDot() == editorPane.getCaret().getMark(), locFragmentOffset, explain, tabContentPanel);
+	        }
+	        return sql;
+        } catch (BadLocationException e) {
+            e.printStackTrace();
+            return "";
         }
     }
 
@@ -1852,7 +2009,7 @@ public abstract class SQLConsole extends javax.swing.JPanel {
                 // ignore
             }
             Pair<Integer, Integer> loc = new Pair<Integer, Integer>(start, editorPane.getLineCount() - 1);
-            executeSQLBlock(editorPane.getText(loc.a, loc.b, true), loc, false, null, false);
+            executeSQLBlock(editorPane.getText(loc.a, loc.b, true), loc, false, null, false, null);
         }
     }
 
@@ -1937,7 +2094,7 @@ public abstract class SQLConsole extends javax.swing.JPanel {
         @Override
         public void itemStateChanged(ItemEvent e) {
             if (e.getStateChange() == ItemEvent.SELECTED && e.getItem() != null && historyComboBox.getSelectedIndex() > 0) {
-                appendStatement(e.getItem().toString(), false);
+                appendStatement(e.getItem().toString(), false, null, true);
                 historyComboBox.setSelectedIndex(0);
             }
         }
@@ -2012,13 +2169,20 @@ public abstract class SQLConsole extends javax.swing.JPanel {
 			newStatement = currentStatement.replaceAll("((?:(?:;(?: |\\t|\\r)*?(?:--[^\\n]*)?))) ?\\\\([ \\t\\r]*\\n)", "$1$2");
 			newStatement = newStatement.replaceAll("((?:\\n(?: |\\t|\\r)*?)) ?\\\\([ \\t\\r]*)(?=\\n)", "$1$2");
 		} else {
-			newStatement = currentStatement.replaceAll("((?:(?:;(?: |\\t|\\r)*(?:--[^\\n]*)?)))(\\n(\\r)?)", "$1 \\\\$2");
-			newStatement = newStatement.replaceAll("((?:(?:\\n(?: |\\t|\\r)*)))(?=\\n)", "$1 \\\\");
-			newStatement = newStatement.replaceAll("\\\\(\\s*)$", "$1");
+			newStatement = addLineContinuation(currentStatement);
 		}
 		if (!currentStatement.equals(newStatement)) {
 			editorPane.replaceCurrentStatement(newStatement, false);
 		}
+	}
+
+	private String addLineContinuation(String statement) {
+		String newStatement = statement;
+		newStatement = newStatement.replace("\r", "");
+		newStatement = newStatement.replaceAll("((?:(?:;(?: |\\t|\\r)*(?:--[^\\n]*)?)))(\\n(\\r)?)", "$1 \\\\$2");
+		newStatement = newStatement.replaceAll("((?:(?:\\n(?: |\\t|\\r)*)))(?=\\n)", "$1 \\\\");
+		newStatement = newStatement.replaceAll("\\\\(\\s*)$", "$1");
+		return newStatement;
 	}
 
     private void analyzeSQL() {
@@ -2084,7 +2248,9 @@ public abstract class SQLConsole extends javax.swing.JPanel {
 			StringBuilder sb = new StringBuilder();
 			int c;
 	        while ((c = in.read()) != -1) {
-	        	sb.append((char) c);
+	        	if (c != '\r') {
+	        		sb.append((char) c);
+	        	}
 	        }
 	        in.close();
 	        editorPane.setText(sb.toString());
@@ -2117,8 +2283,14 @@ public abstract class SQLConsole extends javax.swing.JPanel {
 			if (newFile != null) {
 				file = newFile;
 			}
-			BufferedWriter out = new BufferedWriter(new FileWriter(file));
-			out.write(editorPane.getText());
+			PrintWriter out = new PrintWriter(new BufferedWriter(new FileWriter(file)));
+			int lines = editorPane.getLineCount();
+			for (int line = 0; line < lines; ++line) {
+				out.print(getLineContent(line).replace("\r", "").replace("\n", ""));
+				if (line < lines - 1) {
+					out.println();
+				}
+			}
 			out.close();
 	        initialContentSize = editorPane.getDocument().getLength();
 	        initialContentHash = editorPane.getText().hashCode();
@@ -2141,6 +2313,21 @@ public abstract class SQLConsole extends javax.swing.JPanel {
 	}
 
 	/**
+	 * Reloads tab content
+	 * 
+	 * @param tabContentPanel to be reloaded
+	 * @param sql statement to be executed again
+	 */
+	private void reload(TabContentPanel tabContentPanel, String sql) {
+		try {
+			UIUtil.setWaitCursor(tabContentPanel);
+			appendStatement(sql.replaceFirst("(;\\s*)+$", ""), true, tabContentPanel, true);
+		} finally {
+			UIUtil.resetWaitCursor(tabContentPanel);
+		}
+	}
+
+	/**
 	 * Gets the file associated with this console.
 	 * 
 	 * @return file associated with this console or <code>null</code>, if the console is not assigned to a file
@@ -2160,7 +2347,16 @@ public abstract class SQLConsole extends javax.swing.JPanel {
     	CancellationHandler.cancel(this);
     	queue.add(STOP);
 	}
-	
+
+	/**
+	 * Gets the editor pane.
+	 * 
+	 * @return the editor pane
+	 */
+    public RSyntaxTextAreaWithSQLSyntaxStyle getEditorPane() {
+		return editorPane;
+	}
+
 	protected abstract void onContentStateChange(File file, boolean dirty);
 
 	static private ImageIcon runIcon;

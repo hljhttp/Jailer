@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2018 the original author or authors.
+ * Copyright 2007 - 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,29 +26,40 @@ import java.awt.Rectangle;
 import java.awt.RenderingHints;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
+import java.awt.event.WindowEvent;
+import java.awt.event.WindowListener;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
 import javax.swing.JLabel;
+import javax.swing.JOptionPane;
 import javax.swing.JPopupMenu;
 import javax.swing.JTable;
 import javax.swing.ListSelectionModel;
+import javax.swing.RowSorter;
+import javax.swing.ScrollPaneConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.event.ListSelectionEvent;
 import javax.swing.event.ListSelectionListener;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableCellRenderer;
 import javax.swing.table.TableColumn;
+import javax.swing.table.TableModel;
 
+import net.coderazzi.filters.gui.AutoChoices;
+import net.coderazzi.filters.gui.TableFilterHeader;
 import net.sf.jailer.datamodel.DataModel;
 import net.sf.jailer.datamodel.Table;
 import net.sf.jailer.util.CancellationException;
 import net.sf.jailer.util.CancellationHandler;
 import net.sf.jailer.util.CycleFinder;
+import net.sf.jailer.util.CycleFinder.CycleConsumer;
+import net.sf.jailer.util.CycleFinder.Path;
 
 /**
  * Shows dependency cycles.
@@ -60,8 +71,13 @@ public class CyclesView extends javax.swing.JDialog {
 	/**
 	 * Maximum number of tables in a view's line.
 	 */
-	private final static int MAX_TABLES_PER_LINE = 4;
-	
+	private final static int MAX_TABLES_PER_LINE = 40;
+
+	/**
+	 * Maximum number of cycles in view.
+	 */
+	private final static int MAX_CYCLES = 10000;
+
 	/**
 	 * The extraction model frame.
 	 */
@@ -108,7 +124,13 @@ public class CyclesView extends javax.swing.JDialog {
 				if (!(graphics instanceof Graphics2D)) return;
 				Graphics2D g2d = (Graphics2D) graphics;
 				for (CellInfo posInfo: cellInfo) {
-					Rectangle r = cyclesTable.getCellRect(posInfo.row, posInfo.column, false);
+					RowSorter<? extends TableModel> rowSorter = cyclesTable.getRowSorter();
+					int row = rowSorter.convertRowIndexToView(posInfo.row);
+					if (row < 0) {
+						continue;
+					}
+					int column = posInfo.column;
+					Rectangle r = cyclesTable.getCellRect(row, column, false);
 					Color color = new Color(255, 0, 0, 150);
 					g2d.setColor(color);
 					g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
@@ -134,17 +156,48 @@ public class CyclesView extends javax.swing.JDialog {
 		};
 		cyclesTable.setShowGrid(false);
 		cyclesTable.setSurrendersFocusOnKeystroke(true);
+		cyclesTable.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
+		cyclesTable.setAutoCreateRowSorter(true);
+		cyclesTable.getTableHeader().setReorderingAllowed(false);
 		jScrollPane1.setViewportView(cyclesTable);
-		jScrollPane1.setColumnHeaderView(null);
+
+		TableFilterHeader filterHeader = new TableFilterHeader();
+		filterHeader.setRowHeightDelta(2);
+		filterHeader.setAutoChoices(AutoChoices.ENABLED);
+		filterHeader.setTable(cyclesTable);
+		filterHeader.setMaxVisibleRows(20);
+
+		jScrollPane1.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED);
+		jScrollPane1.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED);
 		
 		cyclesTable.addMouseListener(new MouseListener() {
 			@Override
 			public void mouseClicked(MouseEvent e) {
+				int row = cyclesTable.rowAtPoint(e.getPoint());
+				int column = cyclesTable.columnAtPoint(e.getPoint());
+				if (row < 0 || column < 0) return;
+				if (SwingUtilities.isLeftMouseButton(e)) {
+					RowSorter<? extends TableModel> rowSorter = cyclesTable.getRowSorter();
+					row = rowSorter.convertRowIndexToModel(row);
+					if (row >= 0) {
+						String displayName = (String) cyclesTable.getModel().getValueAt(row, column);
+						cyclesTable.getSelectionModel().clearSelection();
+						if (displayName != null && !"".equals(displayName)) {
+	//						if (selectedTable == null || !selectedTable.equals(displayName)) {
+								selectedTable = displayName;
+								repaint();
+								Table table = getDataModel().getTableByDisplayName(selectedTable);
+								if (table != null) {
+									if (!CyclesView.this.extractionModelFrame.extractionModelEditor.select(table)) {
+										CyclesView.this.extractionModelFrame.extractionModelEditor.setRootSelection(table);
+									}
+								}
+	//						}
+						}
+					}
+				}
 				// context menu
 				if (SwingUtilities.isRightMouseButton(e)) {
-					int row = cyclesTable.rowAtPoint(e.getPoint());
-					int column = cyclesTable.columnAtPoint(e.getPoint());
-					if (row < 0 || column < 0) return;
 					Object value = cyclesTable.getModel().getValueAt(row, column);
 					if (value == null || !(value instanceof String)) return;
 					Table table = getDataModel().getTableByDisplayName((String) value);
@@ -184,13 +237,17 @@ public class CyclesView extends javax.swing.JDialog {
 					hasFocus = false;
 				}
 				Component render = defaultTableCellRenderer.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
-				if (render instanceof JLabel && !isSelected && row < bgColor.size()) {
-					((JLabel) render).setBackground(bgColor.get(row));
+				if (render instanceof JLabel) {
+					if (!isSelected && row < bgColor.size()) {
+						((JLabel) render).setBackground(bgColor.get(row));
+					} else if (isSelected) {
+						((JLabel) render).setBackground(new Color(160, 200, 255));
+					}	
 				}
 				if (render instanceof JLabel) {
 					((JLabel) render).setForeground(Color.BLACK);
 					((JLabel) render).setFont(normal);
-					((JLabel) render).setToolTipText(((JLabel) render).getText());
+					((JLabel) render).setToolTipText("".equals(((JLabel) render).getText())? null : ((JLabel) render).getText());
 					if (selectedTable != null) {
 						if (selectedTable.equals(value)) {
 							((JLabel) render).setFont(bold);
@@ -200,39 +257,23 @@ public class CyclesView extends javax.swing.JDialog {
 				return render;
 			}
 		});
+		cyclesTable.setRowSelectionAllowed(true);
 		cyclesTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
 		cyclesTable.getSelectionModel().addListSelectionListener(new ListSelectionListener() {
 			@Override
 			public void valueChanged(ListSelectionEvent evt) {
-				int col = cyclesTable.getSelectedColumn();
-				int row = cyclesTable.getSelectedRow();
-				if (col >= 1 && row >= 0) {
-					String displayName = (String) cyclesTable.getModel().getValueAt(row, col);
-					cyclesTable.getSelectionModel().clearSelection();
-					if (displayName != null && !"".equals(displayName)) {
-//						if (selectedTable == null || !selectedTable.equals(displayName)) {
-							selectedTable = displayName;
-							repaint();
-							Table table = getDataModel().getTableByDisplayName(selectedTable);
-							if (table != null) {
-								if (!CyclesView.this.extractionModelFrame.extractionModelEditor.select(table)) {
-									CyclesView.this.extractionModelFrame.extractionModelEditor.setRootSelection(table);
-								}
-							}
-//						}
-					}
-				}
 			}
 		});
-		setLocation(500, 150);
-		setSize(600, 400);
+		setLocation(400, 150);
+		setSize(700, 500);
 //        setAlwaysOnTop(true);
 	}
 
 	private class FindCyclesDialog extends javax.swing.JDialog {
 		public FindCyclesDialog() {
-			super(extractionModelFrame, false);
+			super(extractionModelFrame, true);
 			initComponents();
+			setTitle("Find cycles");
 			UIUtil.initPeer();
 		}
 		
@@ -243,9 +284,33 @@ public class CyclesView extends javax.swing.JDialog {
 			jButton1 = new javax.swing.JButton();
 
 			setDefaultCloseOperation(javax.swing.WindowConstants.DO_NOTHING_ON_CLOSE);
+			addWindowListener(new WindowListener() {
+				@Override
+				public void windowOpened(WindowEvent e) {
+				}
+				@Override
+				public void windowIconified(WindowEvent e) {
+				}
+				@Override
+				public void windowDeiconified(WindowEvent e) {
+				}
+				@Override
+				public void windowDeactivated(WindowEvent e) {
+				}
+				@Override
+				public void windowClosing(WindowEvent e) {
+					jButton1ActionPerformed(null);
+				}
+				@Override
+				public void windowClosed(WindowEvent e) {
+				}
+				@Override
+				public void windowActivated(WindowEvent e) {
+				}
+			});
 			getContentPane().setLayout(new java.awt.GridBagLayout());
 
-			label.setText("       Finding cycles...     ");
+			label.setText("       Finding cycles...                         ");
 			gridBagConstraints = new java.awt.GridBagConstraints();
 			gridBagConstraints.gridx = 0;
 			gridBagConstraints.gridy = 0;
@@ -254,7 +319,7 @@ public class CyclesView extends javax.swing.JDialog {
 			gridBagConstraints.insets = new java.awt.Insets(12, 12, 12, 12);
 			getContentPane().add(label, gridBagConstraints);
 
-			jButton1.setText(" Abort ");
+			jButton1.setText(" Stop ");
 			jButton1.addActionListener(new java.awt.event.ActionListener() {
 				@Override
 				public void actionPerformed(java.awt.event.ActionEvent evt) {
@@ -269,12 +334,12 @@ public class CyclesView extends javax.swing.JDialog {
 			getContentPane().add(jButton1, gridBagConstraints);
 
 			pack();
-		}// </editor-fold>//GEN-END:initComponents
+		}
 
-		private void jButton1ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton1ActionPerformed
+		private void jButton1ActionPerformed(java.awt.event.ActionEvent evt) {
 			this.setVisible(false);
 			CancellationHandler.cancel(null);
-		}//GEN-LAST:event_jButton1ActionPerformed
+		}
 		
 		private javax.swing.JButton jButton1;
 		private javax.swing.JLabel label;
@@ -291,21 +356,64 @@ public class CyclesView extends javax.swing.JDialog {
 			@Override
 			public void run() {
 				try {
-					final Collection<CycleFinder.Path> cycles = CycleFinder.findCycle(extractionModelFrame.extractionModelEditor.dataModel, extractionModelFrame.extractionModelEditor.dataModel.getTables());
+					final List<List<Table>> cycles = new ArrayList<List<Table>>();
+					try {
+						CycleFinder.findCycle(extractionModelFrame.extractionModelEditor.dataModel, extractionModelFrame.extractionModelEditor.dataModel.getTables(), true, null,
+							new CycleConsumer() {
+								@Override
+								public boolean consume(final Path cycle) {
+									List<Table> path = new ArrayList<>(cycle.length);
+									cycle.fillPath(path);
+									cycles.add(new ArrayList<Table>(path));
+									path.remove(0);
+									for (int i = 1; i < path.size(); ++i) {
+										ArrayList<Table> e = new ArrayList<Table>(path);
+										e.add(e.get(0));
+										cycles.add(e);
+										path.add(path.remove(0));
+									}
+									final int numCycles = cycles.size();
+									SwingUtilities.invokeLater(new Runnable() {
+										@Override
+										public void run() {
+											findCyclesDialog.label.setText("       " + numCycles + " cycles found so far....     ");
+										}
+									});
+									return numCycles < MAX_CYCLES;
+								}
+							});
+						} catch (CancellationException ce) {
+							CancellationHandler.reset(null);
+							if (cycles.isEmpty()) {
+								return;
+							}
+						}
+					Collections.sort(cycles, new Comparator<List<Table>>() {
+						@Override
+						public int compare(List<Table> o1, List<Table> o2) {
+							if (o1.size() != o2.size()) {
+								return o1.size() - o2.size();
+							}
+							int l = o1.size();
+							for (int i = 0; i < l; ++i) {
+								int diff = getDataModel().getDisplayName(o1.get(i)).compareTo(getDataModel().getDisplayName(o2.get(i)));
+								if (diff != 0) {
+									return diff;
+								}
+							}
+							return 0;
+						}
+					});
 					SwingUtilities.invokeLater(new Runnable() {
 						@Override
 						public void run() {
 							findCyclesDialog.setVisible(false);
-							CyclesView.this.setVisible(true);
-							refreshTableModel(cycles);
-						}
-					});
-				} catch (CancellationException ce) {
-					CancellationHandler.reset(null);
-					SwingUtilities.invokeLater(new Runnable() {
-						@Override
-						public void run() {
-							CyclesView.this.setVisible(false);
+							if (cycles.isEmpty()) {
+								JOptionPane.showMessageDialog(extractionModelFrame, "No cycle found.", "Cycles", JOptionPane.INFORMATION_MESSAGE);
+							} else {
+								CyclesView.this.setVisible(true);
+								refreshTableModel(cycles);
+							}
 						}
 					});
 				} catch (final Throwable t) {
@@ -340,37 +448,38 @@ public class CyclesView extends javax.swing.JDialog {
 	/**
 	 * Refreshes the table model.
 	 */
-	private synchronized void refreshTableModel(Collection<CycleFinder.Path> cycles) {
+	private synchronized void refreshTableModel(List<List<Table>> cycles) {
 		cellInfo.clear();
+		selectedTable = null;
+		int maxLength = 1;
 		
 		Set<Table> tables = new HashSet<Table>();
-		for (CycleFinder.Path p: cycles) {
-			List<Table> currentLineT = new ArrayList<Table>();
-			p.fillPath(currentLineT);
-			for (Table t: currentLineT) {
+		for (List<Table> p: cycles) {
+			if (p.size() > maxLength) {
+				maxLength = p.size();
+			}
+			for (Table t: p) {
 				tables.add(t);
 			}
 		}
 		numLabel.setText(" " + cycles.size() + " Cycles, " + tables.size() + " distinct tables");
 		
-		Object[] columns = new Object[MAX_TABLES_PER_LINE + 1];
+		Object[] columns = new Object[Math.min(maxLength, MAX_TABLES_PER_LINE + 1)];
 		for (int i = 0; i < columns.length; ++i) {
 			columns[i] = "";
 		}
-		columns[0] = "Distance";
-		columns[1] = "Table";
+		columns[0] = "Table";
 		
 		List<Object[]> data = new ArrayList<Object[]>();
-		
+
 		int distance = 0;
 		final Color BG1 = new Color(255, 255, 255);
 		final Color BG2 = new Color(242, 255, 242);
 		bgColor.clear();
 		
-		for (CycleFinder.Path cycle: cycles) {
+		for (List<Table> cycle: cycles) {
 			// add current line to table model
-			List<Table> currentLineT = new ArrayList<Table>();
-			cycle.fillPath(currentLineT);
+			List<Table> currentLineT = new ArrayList<Table>(cycle);
 			List<String> currentLine = new ArrayList<String>();
 			for (Table t: currentLineT) {
 				currentLine.add(extractionModelFrame.extractionModelEditor.dataModel.getDisplayName(t));
@@ -378,7 +487,7 @@ public class CyclesView extends javax.swing.JDialog {
 			Object[] lineAsObjects = new Object[MAX_TABLES_PER_LINE + 1];
 			Arrays.fill(lineAsObjects, "");
 			int col = 0;
-			lineAsObjects[col++] = "";
+//			lineAsObjects[col++] = "";
 			CellInfo cellInfo = null;
 			for (String t: currentLine) {
 				cellInfo = new CellInfo();
@@ -407,10 +516,10 @@ public class CyclesView extends javax.swing.JDialog {
 				data.add(lineAsObjects);
 				bgColor.add(distance % 2 == 0? BG1 : BG2);
 			}
-			lineAsObjects = new Object[MAX_TABLES_PER_LINE + 1];
-			Arrays.fill(lineAsObjects, "");
-			data.add(lineAsObjects);
-			bgColor.add(distance % 2 == 0? BG1 : BG2);
+//			lineAsObjects = new Object[MAX_TABLES_PER_LINE + 1];
+//			Arrays.fill(lineAsObjects, "");
+//			data.add(lineAsObjects);
+//			bgColor.add(distance % 2 == 0? BG1 : BG2);
 			++distance;
 		}
 		
@@ -442,22 +551,16 @@ public class CyclesView extends javax.swing.JDialog {
 				width = Math.max(width, comp.getPreferredSize().width);
 			}
 			
-			if (i == 0) {
-				width = 50;
-				column.setMaxWidth(width);
-			}
-			
-			column.setPreferredWidth(width);
+			column.setPreferredWidth(width + 50);
 		}
 		cyclesTable.setIntercellSpacing(new Dimension(0, 0));
+		cyclesTable.clearSelection();
 	}
 
-	/** This method is called from within the constructor to
+	/**
+	 * This method is called from within the constructor to
 	 * initialize the form.
-	 * WARNING: Do NOT modify this code. The content of this method is
-	 * always regenerated by the Form Editor.
 	 */
-	// <editor-fold defaultstate="collapsed" desc=" Erzeugter Quelltext ">//GEN-BEGIN:initComponents
 	private void initComponents() {
 		java.awt.GridBagConstraints gridBagConstraints;
 
@@ -500,8 +603,8 @@ public class CyclesView extends javax.swing.JDialog {
 		));
 		cyclesTable.setShowGrid(false);
 		cyclesTable.setSurrendersFocusOnKeystroke(true);
+		cyclesTable.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
 		jScrollPane1.setViewportView(cyclesTable);
-		jScrollPane1.setColumnHeaderView(null);
 		jScrollPane1.setColumnHeader(null);
 		
 		gridBagConstraints = new java.awt.GridBagConstraints();
@@ -523,14 +626,12 @@ public class CyclesView extends javax.swing.JDialog {
 		getContentPane().add(jPanel1, gridBagConstraints);
 
 		pack();
-	}// </editor-fold>//GEN-END:initComponents
+	}
 
-	// Variablendeklaration - nicht modifizieren//GEN-BEGIN:variables
 	private javax.swing.JTable cyclesTable;
 	private javax.swing.JLabel numLabel;
 	private javax.swing.JPanel jPanel1;
 	private javax.swing.JScrollPane jScrollPane1;
-	// Ende der Variablendeklaration//GEN-END:variables
 	
 	private static final long serialVersionUID = 5485949274233292142L;
 

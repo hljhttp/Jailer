@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2018 the original author or authors.
+ * Copyright 2007 - 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -55,7 +55,7 @@ public class CollectedRowsCounter implements ProgressListener {
 	 * 
 	 * @return the statistic
 	 */
-	public List<String> createStatistic(boolean forDelete, final DataModel datamodel) {
+	public List<String> createStatistic(boolean forDelete, final DataModel datamodel, ExportStatistic exportStatistic) {
 		List<String> result = new ArrayList<String>();
 		Map<Table, Long> rowsCount = getCollectedRowsCount();
 		Map<Table, Long> deletedCount = getDeletedRowsCount();
@@ -81,21 +81,30 @@ public class CollectedRowsCounter implements ProgressListener {
 			}
 		}
 		result.add((forDelete? "Deleted Rows:      " : "Exported Rows:     ") + sum);
+		Map<Table, Long> exportedRows = new HashMap<Table, Long>();
+		long total = 0;
 		for (Table stable: tabs) {
 			Long rc = rowsCount.get(stable);
 			if (rc == null) {
 				rc = 0L;
+			} else {
+				exportedRows.put(stable, rc);
+				total += rc;
 			}
 			String reduct = "";
 			if (forDelete && deletedCount.containsKey(stable)) {
 				long r = deletedCount.get(stable);
 				if (r > 0) {
-					reduct = "(" + -r + ")";
+					reduct = "(" + rc + " - " + r + ")";
+					rc -= r;
 				}
 			}
 			result.add(String.format("   %-24s %10d %s", datamodel.getDisplayName(stable), rc, reduct));
 		}
-		
+		if (exportStatistic != null) {
+			exportStatistic.setExportedRows(exportedRows);
+			exportStatistic.setTotal(total);
+		}
 		return result;
 	}
 

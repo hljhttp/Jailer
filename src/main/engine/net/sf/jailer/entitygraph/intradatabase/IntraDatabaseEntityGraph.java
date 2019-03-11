@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2018 the original author or authors.
+ * Copyright 2007 - 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,13 +19,9 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
-import java.sql.DatabaseMetaData;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 import net.sf.jailer.ExecutionContext;
@@ -43,7 +39,6 @@ import net.sf.jailer.datamodel.PrimaryKey;
 import net.sf.jailer.datamodel.Table;
 import net.sf.jailer.entitygraph.EntityGraph;
 import net.sf.jailer.entitygraph.remote.RemoteEntityGraph;
-import net.sf.jailer.modelbuilder.JDBCMetaDataBasedModelElementFinder;
 import net.sf.jailer.util.JobManager;
 import net.sf.jailer.util.Quoting;
 import net.sf.jailer.util.SqlScriptExecutor;
@@ -71,15 +66,15 @@ public class IntraDatabaseEntityGraph extends RemoteEntityGraph {
 	 * @throws SQLException 
 	 */
 	private IntraDatabaseEntityGraph(DataModel dataModel, int graphID,
-			Session session, PrimaryKey universalPrimaryKey, ExecutionContext executionContext) throws SQLException {
-		super(dataModel, graphID, session, universalPrimaryKey, executionContext);
+			Session session, PrimaryKey universalPrimaryKey, Runnable updateStatistics, ExecutionContext executionContext) throws SQLException {
+		super(dataModel, graphID, session, universalPrimaryKey, updateStatistics, executionContext);
 		upsertOnly = executionContext.getUpsertOnly();
 		synchronized (this) {
 			upsertStrategy = null;
 			upsertStrategies = new ArrayList<UpsertStrategy>();
 			
-			upsertStrategies.add(new MergeUS(false));
 			upsertStrategies.add(new MergeUS(true));
+			upsertStrategies.add(new MergeUS(false));
 			upsertStrategies.add(new UpsertMYSQLUS());
 			upsertStrategies.add(new UpsertPGUS());
 			upsertStrategies.add(new UpsertStandardUS());
@@ -87,63 +82,7 @@ public class IntraDatabaseEntityGraph extends RemoteEntityGraph {
 		quoting = new Quoting(session);
 	}
 
-	private String defaultSchema = null;
 	private Quoting quoting = null;
-	private Map<Table, Boolean> hasPKPerTable = new HashMap<Table, Boolean>();
-
-	private synchronized boolean hasPrimarykey(Session session, Table table) {
-		try {
-			Boolean hasPrimarykey = hasPKPerTable.get(table);
-			if (hasPrimarykey != null) {
-				return hasPrimarykey;
-			}
-			
-			if (defaultSchema == null) {
-				defaultSchema = JDBCMetaDataBasedModelElementFinder.getDefaultSchema(session, session.getSchema());
-			}
-	
-			String schema = table.getOriginalSchema("");
-			String mappedSchema = executionContext
-					.getSchemaMapping().get(schema);
-			if (mappedSchema != null) {
-				schema = mappedSchema;
-			}
-			if (schema.length() == 0) {
-				schema = defaultSchema;
-			}
-			
-			schema = quoting.unquote(schema);
-			String tableName = quoting.unquote(table.getUnqualifiedName());
-			ResultSet resultSet = getPrimaryKeys(session, session.getMetaData(), schema, tableName);
-			hasPrimarykey = resultSet.next();
-			resultSet.close();
-			if (!hasPrimarykey) {
-				if (session.getMetaData().storesUpperCaseIdentifiers()) {
-					schema = schema.toUpperCase();
-					tableName = tableName.toUpperCase();
-				} else {
-					schema = schema.toLowerCase();
-					tableName = tableName.toLowerCase();
-				}
-				resultSet = getPrimaryKeys(session, session.getMetaData(), schema, tableName);
-				hasPrimarykey = resultSet.next();
-				resultSet.close();
-			}
-			hasPKPerTable.put(table, hasPrimarykey);
-			return hasPrimarykey;
-		} catch (SQLException e) {
-			return true;
-		}
-	}
-
-	private ResultSet getPrimaryKeys(Session session,
-			DatabaseMetaData metaData, String schema, String table)
-			throws SQLException {
-		if (DBMS.MySQL.equals(session.dbms)) {
-			return metaData.getPrimaryKeys(schema, null, table);
-		}
-		return metaData.getPrimaryKeys(null, schema, table);
-	}
 
 	/**
 	 * Creates a new entity-graph.
@@ -157,9 +96,9 @@ public class IntraDatabaseEntityGraph extends RemoteEntityGraph {
 	 * @return the newly created entity-graph
 	 */
 	public static IntraDatabaseEntityGraph create(DataModel dataModel,
-			int graphID, Session session, PrimaryKey universalPrimaryKey, ExecutionContext executionContext) throws SQLException {
+			int graphID, Session session, PrimaryKey universalPrimaryKey, Runnable updateStatistics, ExecutionContext executionContext) throws SQLException {
 		IntraDatabaseEntityGraph entityGraph = new IntraDatabaseEntityGraph(
-				dataModel, graphID, session, universalPrimaryKey, executionContext);
+				dataModel, graphID, session, universalPrimaryKey, updateStatistics, executionContext);
 		init(graphID, session, executionContext);
 		return entityGraph;
 	}
@@ -177,7 +116,7 @@ public class IntraDatabaseEntityGraph extends RemoteEntityGraph {
 	public EntityGraph copy(int newGraphID, Session session)
 			throws SQLException {
 		IntraDatabaseEntityGraph entityGraph = create(dataModel, newGraphID,
-				session, universalPrimaryKey, executionContext);
+				session, universalPrimaryKey, null, executionContext);
 		entityGraph.setBirthdayOfSubject(birthdayOfSubject);
 		session.executeUpdate("Insert into "
 				+ SQLDialect.dmlTableReference(ENTITY, session, executionContext)
@@ -187,45 +126,6 @@ public class IntraDatabaseEntityGraph extends RemoteEntityGraph {
 				+ ", birthday, birthday, type From "
 				+ SQLDialect.dmlTableReference(ENTITY, session, executionContext)
 				+ " Where r_entitygraph=" + graphID + "");
-		return entityGraph;
-	}
-
-	/**
-	 * Finds an entity-graph.
-	 * 
-	 * @param graphID
-	 *            the unique ID of the graph
-	 * @param universalPrimaryKey
-	 *            the universal primary key
-	 * @param session
-	 *            for executing SQL-Statements
-	 * @return the entity-graph
-	 */
-	@Override
-	public EntityGraph find(int graphID, Session session,
-			PrimaryKey universalPrimaryKey) throws SQLException {
-		IntraDatabaseEntityGraph entityGraph = new IntraDatabaseEntityGraph(
-				dataModel, graphID, session, universalPrimaryKey, executionContext);
-		final boolean[] found = new boolean[1];
-		found[0] = false;
-		session.executeQuery(
-				"Select * From "
-						+ SQLDialect.dmlTableReference(ENTITY_GRAPH, session, executionContext)
-						+ "Where id=" + graphID + "",
-				new Session.ResultSetReader() {
-					@Override
-					public void readCurrentRow(ResultSet resultSet)
-							throws SQLException {
-						found[0] = true;
-					}
-
-					@Override
-					public void close() {
-					}
-				});
-		if (!found[0]) {
-			throw new RuntimeException("entity-graph " + graphID + " not found");
-		}
 		return entityGraph;
 	}
 
@@ -263,12 +163,36 @@ public class IntraDatabaseEntityGraph extends RemoteEntityGraph {
 	@Override
 	public void readEntities(Table table, boolean orderByPK)
 			throws SQLException {
-		readEntitiesByQuery(table, "Select " + filteredSelectionClause(table, COLUMN_PREFIX, quoting, true) + " From "
+		long incSize = session.dbms.getLimitTransactionSize().getSize(executionContext);
+		if (incSize > 0) { 
+			String update = 
+					"Update " + session.dbms.getLimitTransactionSize().afterSelectFragment(executionContext) + SQLDialect.dmlTableReference(ENTITY, session, executionContext) + " " +
+					"Set birthday=0 " +
+					"Where (birthday>=0 and r_entitygraph=" + graphID + " " + 
+					"and type=" + typeName(table) + ") " + session.dbms.getLimitTransactionSize().additionalWhereConditionFragment(executionContext) +
+					session.dbms.getLimitTransactionSize().statementSuffixFragment(executionContext);
+			for (;;) {
+				long rc = session.executeUpdate(update);
+				if (rc <= 0) {
+					break;
+				}
+				readMarkedEntities(table, orderByPK);
+				session.executeUpdate(
+						"Delete from " + SQLDialect.dmlTableReference(ENTITY, session, executionContext) + " " +
+						"Where birthday=0 and r_entitygraph=" + graphID + " " + 
+						"and type=" + typeName(table) + "");
+				if (rc != incSize) {
+					break;
+				}
+			}
+		} else {
+			readEntitiesByQuery(table, "Select " + filteredSelectionClause(table, COLUMN_PREFIX, quoting, true) + " From "
 				+ SQLDialect.dmlTableReference(ENTITY, session, executionContext) + " E join "
 				+ quoting.requote(table.getName()) + " T on "
 				+ pkEqualsEntityID(table, "T", "E")
 				+ " Where (E.birthday>=0 and E.r_entitygraph=" + graphID
 				+ " and E.type=" + typeName(table) + ")");
+		}
 	}
 
 	/**
@@ -381,11 +305,6 @@ public class IntraDatabaseEntityGraph extends RemoteEntityGraph {
 		sb.append("Insert into " + qualifiedTableName(table) + "(" + labelCSL
 				+ ") " + sqlSelect);
 		
-		if (!table.primaryKey.getColumns().isEmpty() && !hasPrimarykey(session, table)) {
-			// dont insert if PK constraint is not enforced
-			return upsertRows(table, sqlSelect, true);
-		}
-		
 		boolean silent = session.getSilent();
 		session.setSilent(true);
 		try {
@@ -394,7 +313,8 @@ public class IntraDatabaseEntityGraph extends RemoteEntityGraph {
 			try {
 				// try upsert
 				return upsertRows(table, sqlSelect, true);
-			} catch (SQLException e2) {
+			} catch (SQLException uEx) {
+				Session._log.warn(uEx);
 				// throw original exception
 				throw e;
 			}
@@ -420,6 +340,7 @@ public class IntraDatabaseEntityGraph extends RemoteEntityGraph {
 		UpsertStrategy us;
 		boolean done = false;
 		StringBuilder sqlErrorMessages = new StringBuilder();
+		StringBuilder sqlErrorStatements = new StringBuilder();
 		long rc = 0;
 		synchronized (this) {
 			us = upsertStrategy;
@@ -437,7 +358,10 @@ public class IntraDatabaseEntityGraph extends RemoteEntityGraph {
 					done = true;
 					break;
 				} catch (SQLException e) {
-					sqlErrorMessages.append("\n" + e.getMessage());
+					sqlErrorMessages.append("  - " + e.getMessage().replaceAll("\\s+", " ") + "\n");
+					if (e instanceof SqlException) {
+						sqlErrorStatements.append("- " + ((SqlException) e).sqlStatement.replaceAll("\\s+", " ") + "\n");
+					}
 					// try another strategy
 				} finally {
 					session.setSilent(silent);
@@ -465,7 +389,15 @@ public class IntraDatabaseEntityGraph extends RemoteEntityGraph {
 						return upsertRows(table, sqlSelect, false);
 					} catch (SQLException e2) {
 						if (e instanceof SqlException) {
-							throw new SqlException(e.getMessage() + sqlErrorMessages, ((SqlException) e).sqlStatement, null);
+							if (sqlErrorMessages.length() > 0) {
+								SqlException se = new SqlException(
+										"Tried various update strategies but all failed:\n" +
+										sqlErrorMessages.toString(), sqlErrorStatements.toString(), null);
+								se.setFormatted(true);
+								throw se;
+							} else {
+								throw new SqlException(e.getMessage() + sqlErrorMessages, ((SqlException) e).sqlStatement, null);
+							}
 						}
 						throw new SQLException(e.getMessage() + sqlErrorMessages, e);
 					}

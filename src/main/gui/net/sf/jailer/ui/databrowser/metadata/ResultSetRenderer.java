@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2018 the original author or authors.
+ * Copyright 2007 - 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -81,6 +81,7 @@ public class ResultSetRenderer extends javax.swing.JPanel {
         loadJob.run();
         JComponent rTabContainer = rb.getRowsTableContainer();
         rb.sortColumnsCheckBox.setVisible(false);
+        rb.sortColumnsPanel.setVisible(false);
         renderPanel.add(rTabContainer);
         rb.resetRowsTableContainer();
         renderPanel.repaint();

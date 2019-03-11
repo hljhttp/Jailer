@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2018 the original author or authors.
+ * Copyright 2007 - 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,6 +36,7 @@ import net.sf.jailer.database.BasicDataSource;
 import net.sf.jailer.database.Session;
 import net.sf.jailer.datamodel.Association;
 import net.sf.jailer.datamodel.DataModel;
+import net.sf.jailer.datamodel.PrimaryKeyFactory;
 import net.sf.jailer.datamodel.Table;
 import net.sf.jailer.ddl.DDLCreator;
 import net.sf.jailer.domainmodel.DomainModel;
@@ -48,6 +49,7 @@ import net.sf.jailer.subsetting.SubsettingEngine;
 import net.sf.jailer.util.CancellationException;
 import net.sf.jailer.util.CancellationHandler;
 import net.sf.jailer.util.ClasspathUtil;
+import net.sf.jailer.util.LogUtil;
 import net.sf.jailer.util.PrintUtil;
 import net.sf.jailer.util.SqlScriptExecutor;
 import net.sf.jailer.util.SqlUtil;
@@ -97,6 +99,15 @@ public class Jailer {
 				}
 			}
 		});
+
+		if (new File(".singleuser").exists() // legacy 
+				|| new File(".multiuser").exists()) {
+			File home = new File(System.getProperty("user.home"), ".jailer");
+			home.mkdirs();
+			LogUtil.reloadLog4jConfig(home);
+			Configuration configuration = Configuration.getInstance();
+			configuration.setTempFileFolder(new File(home, "tmp").getPath());
+		}
 		try {
 			System.setProperty("db2.jcc.charsetDecoderEncoder", "3");
 		} catch (Exception e) {
@@ -174,9 +185,9 @@ public class Jailer {
 				} else {
 					BasicDataSource dataSource = new BasicDataSource(commandLine.arguments.get(2), commandLine.arguments.get(3), commandLine.arguments.get(4),
 							commandLine.arguments.get(5), 0, jdbcJarURLs);
-					Session session = new Session(dataSource, dataSource.dbms, null, commandLine.transactional);
+					Session session = new Session(dataSource, dataSource.dbms, commandLine.isolationLevel, null, commandLine.transactional);
 					try {
-						new SqlScriptExecutor(session, commandLine.numberOfThreads).executeScript(commandLine.arguments.get(1), commandLine.transactional);
+						new SqlScriptExecutor(session, commandLine.numberOfThreads, false).executeScript(commandLine.arguments.get(1), commandLine.transactional);
 					} finally {
 						try {
 							session.shutDown();
@@ -200,6 +211,10 @@ public class Jailer {
 						System.out.println("missing '-e' option");
 						CommandLineParser.printUsage();
 					} else {
+						if (!commandLine.independentWorkingTables) {
+							PrimaryKeyFactory.createUPKScope(commandLine.arguments.get(1), executionContext);
+						}
+
 						BasicDataSource dataSource = new BasicDataSource(commandLine.arguments.get(2), commandLine.arguments.get(3),
 								commandLine.arguments.get(4), commandLine.arguments.get(5), 0, jdbcJarURLs);
 						URL modelURL = new File(commandLine.arguments.get(1)).toURI().toURL();
@@ -219,6 +234,9 @@ public class Jailer {
 								commandLine.arguments.get(4), commandLine.arguments.get(5), 0, jdbcJarURLs);
 						// note we are passing null for script format and the export script name, as we are using the export tool
 						// to generate the delete script only.
+						if (!commandLine.independentWorkingTables) {
+							PrimaryKeyFactory.createUPKScope(commandLine.arguments.get(1), executionContext);
+						}
 						URL modelURL = new File(commandLine.arguments.get(1)).toURI().toURL();
 						new SubsettingEngine(executionContext).export(commandLine.where, modelURL, /* clp.exportScriptFileName*/ null, commandLine.deleteScriptFileName,
 								dataSource, dataSource.dbms, commandLine.explain, /*scriptFormat*/ null, 0);
@@ -231,9 +249,17 @@ public class Jailer {
 					findAssociation(commandLine.arguments.get(1), commandLine.arguments.get(2), commandLine.arguments.subList(3, commandLine.arguments.size()), commandLine.undirected, executionContext);
 				}
 			} else if ("create-ddl".equalsIgnoreCase(command)) {
-				if (commandLine.arguments.size() == 5) {
+				if (commandLine.arguments.size() >= 5) {
+					if (!commandLine.independentWorkingTables && commandLine.arguments.size() > 5) {
+						String extractionModelFileName = commandLine.arguments.get(5);
+						PrimaryKeyFactory.createUPKScope(extractionModelFileName, executionContext);
+					}
 					BasicDataSource dataSource = new BasicDataSource(commandLine.arguments.get(1), commandLine.arguments.get(2), commandLine.arguments.get(3), commandLine.arguments.get(4), 0, jdbcJarURLs);
 					return new DDLCreator(executionContext).createDDL(dataSource, dataSource.dbms, executionContext.getScope(), commandLine.workingTableSchema);
+				}
+				if (!commandLine.independentWorkingTables && commandLine.arguments.size() > 1) {
+					String extractionModelFileName = commandLine.arguments.get(1);
+					PrimaryKeyFactory.createUPKScope(extractionModelFileName, executionContext);
 				}
 				return new DDLCreator(executionContext).createDDL((DataSource) null, null, executionContext.getScope(), commandLine.workingTableSchema);
 			} else if ("build-model-wo-merge".equalsIgnoreCase(command)) {

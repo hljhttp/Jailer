@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2018 the original author or authors.
+ * Copyright 2007 - 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -72,7 +72,7 @@ public class DDLCreator {
 	public boolean createDDL(DataSource dataSource, DBMS dbms, WorkingTableScope temporaryTableScope, String workingTableSchema) throws SQLException, FileNotFoundException, IOException {
 		Session session = null;
 		if (dataSource != null) {
-			session = new Session(dataSource, dbms);
+			session = new Session(dataSource, dbms, executionContext.getIsolationLevel());
 		}
 		try {
 			return createDDL(new DataModel(executionContext), session, temporaryTableScope, workingTableSchema);
@@ -87,6 +87,9 @@ public class DDLCreator {
 	 * Creates the DDL for the working-tables.
 	 */
 	public void createDDL(Session localSession, WorkingTableScope temporaryTableScope, String workingTableSchema) throws FileNotFoundException, IOException, SQLException {
+		// TODO register all current export processes.
+		// Fail if a process is still active.
+		// Use a heard beat concept to detect dead processes 
 		createDDL(new DataModel(executionContext), localSession, temporaryTableScope, workingTableSchema);
 	}
 
@@ -102,21 +105,37 @@ public class DDLCreator {
 	 * Creates the DDL for the working-tables.
 	 */
 	public boolean createDDL(DataModel datamodel, Session session, WorkingTableScope temporaryTableScope, RowIdSupport rowIdSupport, String workingTableSchema) throws FileNotFoundException, IOException, SQLException {
+		uPKWasTooLong = false;
 		try {
 			return createDDL(datamodel, session, temporaryTableScope, 0, rowIdSupport, workingTableSchema);
 		} catch (SQLException e) {
+			uPKWasTooLong = true;
+			try {
+				// [bugs:#37] PostreSQL: transactional execution
+				session.getConnection().commit();
+			} catch (SQLException e1) {
+				// ignore
+			}
 		}
 		// reconnect and retry with another index type
 		session.reconnect();
 		try {
 			return createDDL(datamodel, session, temporaryTableScope, 1, rowIdSupport, workingTableSchema);
 		} catch (SQLException e) {
+			try {
+				// [bugs:#37] PostreSQL: transactional execution
+				session.getConnection().commit();
+			} catch (SQLException e1) {
+				// ignore
+			}
 		}
 		// reconnect and retry with another index type
 		session.reconnect();
 		return createDDL(datamodel, session, temporaryTableScope, 2, rowIdSupport, workingTableSchema);
 	}
-		
+
+	public static boolean uPKWasTooLong = false;
+
 	/**
 	 * Creates the DDL for the working-tables.
 	 */
@@ -154,6 +173,7 @@ public class DDLCreator {
 			arguments.put("create-index", tableManager.getCreateIndexPrefix());
 			arguments.put("create-index-suffix", tableManager.getCreateIndexSuffix());
 			arguments.put("index-table-prefix", tableManager.getIndexTablePrefix());
+			arguments.put("schema", schema + tableManager.getDdlTableReferencePrefix());
 		} else {
 			arguments.put("table-suffix", "");
 			arguments.put("drop-table", "DROP TABLE ");
@@ -248,7 +268,7 @@ public class DDLCreator {
 	public boolean isUptodate(DataSource dataSource, DBMS dbms, boolean useRowId, String workingTableSchema) {
 		try {
 			if (dataSource != null) {
-				final Session session = new Session(dataSource, dbms);
+				final Session session = new Session(dataSource, dbms, executionContext.getIsolationLevel());
 				try {
 					return isUptodate(session, useRowId, workingTableSchema);
 				} finally {
@@ -269,7 +289,9 @@ public class DDLCreator {
 	 */
 	public boolean isUptodate(final Session session, boolean useRowId, String workingTableSchema) {
 		try {
+			boolean wasSilent = session.getSilent();
 			try {
+				session.setSilent(true);
 				final boolean[] uptodate = new boolean[] { false };
 				final DataModel datamodel = new DataModel(executionContext);
 				final Map<String, String> typeReplacement = targetDBMS(session).getTypeReplacement();
@@ -290,9 +312,6 @@ public class DDLCreator {
 					public void close() {
 					}
 				};
-				if (JailerVersion.WORKING_TABLE_VERSION == 1) {
-					session.executeQuery("Select jvalue from " + schema + SQLDialect.CONFIG_TABLE_ + " where jversion='" + "7.0" + "' and jkey='upk'", reader);
-				}
 				if (!uptodate[0]) {
 					session.executeQuery("Select jvalue from " + schema + SQLDialect.CONFIG_TABLE_ + " where jversion='" + JailerVersion.WORKING_TABLE_VERSION + "' and jkey='upk'", reader);
 				}
@@ -311,20 +330,27 @@ public class DDLCreator {
 					String testId = "ID:" + System.currentTimeMillis();
 					session.executeUpdate(
 							"INSERT INTO " + schema + SQLDialect.CONFIG_TABLE_ + "(jversion, jkey, jvalue) " +
-							"VALUES (" + JailerVersion.WORKING_TABLE_VERSION + ", '" + testId + "', 'ok')");
+							"VALUES ('" + JailerVersion.WORKING_TABLE_VERSION + "', '" + testId + "', 'ok')");
 					session.executeUpdate(
 							"DELETE FROM " + schema + SQLDialect.CONFIG_TABLE_ + " " +
-							"WHERE jversion=" + JailerVersion.WORKING_TABLE_VERSION + " and jkey='" + testId + "'");
+							"WHERE jversion='" + JailerVersion.WORKING_TABLE_VERSION + "' and jkey='" + testId + "'");
 				}
 				return uptodate[0];
 			} catch (Exception e) {
+				try {
+					// [bugs:#37] PostreSQL: transactional execution
+					session.getConnection().commit();
+				} catch (SQLException e1) {
+					// ignore
+				}
 				return false;
+			} finally {
+				session.setSilent(wasSilent);
 			}
 		} catch (Exception e) {
 			return false;
 		}
 	}
-
 
 	/**
 	 * Checks whether working-tables schema is present.
@@ -347,6 +373,12 @@ public class DDLCreator {
 					});
 				return uptodate[0];
 			} catch (Exception e) {
+				try {
+					// [bugs:#37] PostreSQL: transactional execution
+					session.getConnection().commit();
+				} catch (SQLException e1) {
+					// ignore
+				}
 				return false;
 			}
 		} catch (Exception e) {
@@ -362,7 +394,7 @@ public class DDLCreator {
 	public String getTableInConflict(DataSource dataSource, DBMS dbms) {
 		try {
 			if (dataSource != null) {
-				Session session = new Session(dataSource, dbms);
+				Session session = new Session(dataSource, dbms, executionContext.getIsolationLevel());
 				session.setSilent(true);
 				try {
 					final boolean[] uptodate = new boolean[] { false };

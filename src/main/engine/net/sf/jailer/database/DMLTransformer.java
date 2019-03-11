@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2018 the original author or authors.
+ * Copyright 2007 - 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -349,7 +349,7 @@ public class DMLTransformer extends AbstractResultSetReader {
 			}
 			if (table.getUpsert() || upsertOnly) {
 				if (table.getNonVirtualPKColumns(session).isEmpty()) {
-					throw new DataModel.NoPrimaryKeyException(table);
+					throw new DataModel.NoPrimaryKeyException(table, "has no primary key. Upsert statement can not be generated.");
 				}
 
 				Map<String, String> val = new HashMap<String, String>();
@@ -656,6 +656,9 @@ public class DMLTransformer extends AbstractResultSetReader {
 				}
 				boolean f = true;
 				StringBuffer where = new StringBuffer("");
+				if (table.getNonVirtualPKColumns(session).isEmpty()) {
+					throw new DataModel.NoPrimaryKeyException(table, "has no primary key. Update statement to import CLOB/BLOB/XML can not be generated.");
+				}
 				for (Column pk: table.getNonVirtualPKColumns(session)) {
 					if (!f) {
 						where.append(" and ");

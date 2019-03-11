@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2018 the original author or authors.
+ * Copyright 2007 - 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -97,7 +97,13 @@ public abstract class InlineViewBuilder implements Session.ResultSetReader {
 		String head = style.head(columnNames);
 		
 		if (!statementBuilder.isAppendable(head)) {
-			process(statementBuilder.build());
+			boolean wasLogging = session.getLogStatements();
+			try {
+				session.setLogStatements(false);
+				process(statementBuilder.build());
+			} finally {
+				session.setLogStatements(wasLogging);
+			}
 		}
 
 		String item = style.item(values, columnNames, statementBuilder.size());

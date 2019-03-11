@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2018 the original author or authors.
+ * Copyright 2007 - 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,8 +35,10 @@ import java.awt.event.KeyEvent;
 import java.awt.event.KeyListener;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.awt.geom.Rectangle2D;
+import java.awt.event.WindowEvent;
+import java.awt.event.WindowListener;
 import java.io.File;
+import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -58,9 +60,11 @@ import javax.swing.DefaultListCellRenderer;
 import javax.swing.Icon;
 import javax.swing.ImageIcon;
 import javax.swing.JComponent;
+import javax.swing.JDialog;
 import javax.swing.JLabel;
 import javax.swing.JList;
 import javax.swing.JMenuItem;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
 import javax.swing.JScrollPane;
@@ -70,6 +74,8 @@ import javax.swing.JTable;
 import javax.swing.JTree;
 import javax.swing.ListSelectionModel;
 import javax.swing.ScrollPaneConstants;
+import javax.swing.SwingUtilities;
+import javax.swing.WindowConstants;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import javax.swing.event.ListSelectionEvent;
@@ -104,6 +110,9 @@ import net.sf.jailer.subsetting.ScriptFormat;
 import net.sf.jailer.ui.graphical_view.AssociationRenderer;
 import net.sf.jailer.ui.graphical_view.GraphicalDataModelView;
 import net.sf.jailer.ui.scrollmenu.JScrollPopupMenu;
+import net.sf.jailer.ui.undo.CompensationAction;
+import net.sf.jailer.ui.undo.UndoManager;
+import net.sf.jailer.ui.util.UISettings;
 import net.sf.jailer.util.CsvFile;
 import net.sf.jailer.util.SqlUtil;
 
@@ -199,10 +208,20 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
 	private boolean isHorizontalLayout = false;
 	
 	/**
+	 * The undo mananger.
+	 */
+	private final UndoManager undoManager;
+	
+	/**
 	 * The border browser.
 	 */
 	ClosureBorderDialog closureBorderView;
 
+	/**
+	 * Pending Decisions Panel.
+	 */
+	PendingDecisionsPanel pendingDecisionsPanel;
+	
 	/**
 	 * Multi-line editor for subject condition.
 	 */
@@ -224,7 +243,7 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
 	 * @param extractionModelFile file containing the model
 	 * @param extractionModelFrame the enclosing frame
 	 */
-	public ExtractionModelEditor(String extractionModelFile, ExtractionModelFrame extractionModelFrame, boolean horizontalLayout, String connectionState, String connectionStateToolTip, ExecutionContext executionContext) {
+	public ExtractionModelEditor(String extractionModelFile, final ExtractionModelFrame extractionModelFrame, boolean horizontalLayout, String connectionState, String connectionStateToolTip, ExecutionContext executionContext) throws IOException {
 		this.executionContext = executionContext;
 		this.extractionModelFrame = extractionModelFrame;
 		this.extractionModelFile = extractionModelFile;
@@ -239,33 +258,61 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
 			}
 		};
 		columnMapperDialog = new ColumnMapperDialog(extractionModelFrame, parametersGetter);
-		try {
-			if (extractionModelFile == null || !new File(extractionModelFile).exists()) {
-				needsSave = extractionModelFile != null;
-				dataModel = new DataModel(executionContext);
-				extractionModel = new ExtractionModel(dataModel, executionContext);
-				executionContext.getLayoutStorage().removeAll();
-			} else {
-				extractionModel = new ExtractionModel(extractionModelFile, new HashMap<String, String>(), new HashMap<String, String>(), executionContext);
-				executionContext.getLayoutStorage().restore(extractionModelFile);
+		boolean isNew;
+		if (extractionModelFile == null || !new File(extractionModelFile).exists()) {
+			needsSave = extractionModelFile != null;
+			dataModel = new DataModel(executionContext);
+			extractionModel = new ExtractionModel(dataModel, executionContext);
+			executionContext.getLayoutStorage().removeAll();
+			isNew = true;
+		} else {
+			extractionModel = new ExtractionModel(extractionModelFile, new HashMap<String, String>(), new HashMap<String, String>(), executionContext);
+			executionContext.getLayoutStorage().restore(extractionModelFile);
+			isNew = false;
+		}
+		subject = extractionModel.subject;
+		dataModel = extractionModel.dataModel;
+		if (dataModel != null) {
+			UISettings.s1 = Math.max(UISettings.s1, dataModel.getTables().size());
+		}
+		if (subject == null && dataModel != null && !dataModel.getTables().isEmpty()) {
+			subject = dataModel.getTables().iterator().next();
+			needsSave = true;
+			if (!isNew && extractionModel.subject == null && extractionModel.getSubjectTableName() != null) {
+				SwingUtilities.invokeLater(new Runnable() {
+					@Override
+					public void run() {
+						JOptionPane.showMessageDialog(extractionModelFrame,
+								"Subject table \"" + extractionModel.getSubjectTableName() + "\" does not exist.\n");
+					}
+				});
 			}
-			subject = extractionModel.subject;
-			dataModel = extractionModel.dataModel;
-			if (subject == null && dataModel != null && !dataModel.getTables().isEmpty()) {
-				subject = dataModel.getTables().iterator().next();
-				needsSave = true;
-			}
-		} catch (Exception e) {
-			UIUtil.showException(this, extractionModelFile == null? "Error creating new Model" : "Error in " + new File(extractionModelFile).getName(), e);
-			return;
 		}
 
 		boolean saveNeedsSave = needsSave;
 		initComponents();
 		
+		undoManager = new UndoManager(extractionModelFrame.undoMenuItem, extractionModelFrame.redoMenuItem, undoViewHolder) {
+			@Override
+			public void undo() {
+				super.undo();
+				updateView();
+				clearMessageBox();
+			}
+
+			@Override
+			public void redo() {
+				super.redo();
+				updateView();
+				clearMessageBox();
+			}
+		};
+		
 		AutoCompletion.enable(rootTable);
 		AutoCompletion.enable(subjectTable);
-        GridBagConstraints gridBagConstraints = new java.awt.GridBagConstraints();
+		
+		GridBagConstraints gridBagConstraints = new GridBagConstraints();
+		gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 1;
         gridBagConstraints.gridy = 0;
         jPanel3.add(StringSearchPanel.createSearchButton(extractionModelFrame, subjectTable, "Find Table", null), gridBagConstraints);
@@ -285,8 +332,19 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
 		closureBorderView = new ClosureBorderDialog(this.extractionModelFrame, true) {
 			private static final long serialVersionUID = -7426280043553389753L;
 			@Override
-			protected Table getRoot() {
-				return root;
+			protected List<Table> getRoots() {
+				ArrayList<Table> roots = new ArrayList<Table>();
+				if (subject != null) {
+					roots.add(subject);
+				}
+				for (AdditionalSubject as: extractionModel.additionalSubjects) {
+					if (as.getSubject() != subject) {
+						if (as.getSubject() != null) {
+							roots.add(as.getSubject());
+						}
+					}
+				}
+				return roots;
 			}
 			@Override
 			protected DataModel getDataModel() {
@@ -317,7 +375,120 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
 		restrDepsView = extractionModelFrame.restrictedDependenciesView.getContentPane();
 		closureView.addTabComponent("Restricted Dependencies", restrDepsView);
 		extractionModelFrame.restrictedDependenciesView.dispose();
+
+		activateDesictionPendingButton.setVisible(false);
 		
+		if (extractionModelFrame.pendingDecisionsDialog != null) {
+			extractionModelFrame.pendingDecisionsDialog.dispose();
+		}
+		extractionModelFrame.pendingDecisionsDialog = new JDialog(extractionModelFrame, "Model Migration Tool");
+		extractionModelFrame.pendingDecisionsDialog.setModal(false);
+		extractionModelFrame.pendingDecisionsDialog.setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
+		extractionModelFrame.pendingDecisionsDialog.setLocation(30, 130);
+		extractionModelFrame.pendingDecisionsDialog.setSize(860, 600);
+		extractionModelFrame.addWindowListener(new WindowListener() {
+			@Override
+			public void windowClosed(WindowEvent e) {
+				if (extractionModelFrame.pendingDecisionsDialog != null) {
+					extractionModelFrame.pendingDecisionsDialog.dispose();
+				}
+			}
+			@Override
+			public void windowOpened(WindowEvent e) {
+			}
+			@Override
+			public void windowIconified(WindowEvent e) {
+			}
+			@Override
+			public void windowDeiconified(WindowEvent e) {
+			}
+			@Override
+			public void windowDeactivated(WindowEvent e) {
+			}
+			@Override
+			public void windowClosing(WindowEvent e) {
+			}
+			@Override
+			public void windowActivated(WindowEvent e) {
+			}
+		});
+
+		pendingDecisionsPanel = new PendingDecisionsPanel(dataModel, this) {
+			Boolean docked = null;
+			boolean observed = false;
+			boolean first = true;
+			@Override
+			protected void toggleDockingState() {
+				if (!Boolean.FALSE.equals(docked)) {
+					ExtractionModelEditor.this.extractionModelFrame.pendingDecisionsDialog.getContentPane().removeAll();
+					ExtractionModelEditor.this.extractionModelFrame.pendingDecisionsDialog.getContentPane().add(pendingDecisionsPanel);
+					ExtractionModelEditor.this.extractionModelFrame.pendingDecisionsDialog.setVisible(true);
+					if (!observed) {
+						ExtractionModelEditor.this.extractionModelFrame.pendingDecisionsDialog.addWindowListener(new WindowListener() {
+							@Override
+							public void windowClosed(WindowEvent e) {
+							}
+							@Override
+							public void windowOpened(WindowEvent e) {
+							}
+							@Override
+							public void windowIconified(WindowEvent e) {
+							}
+							@Override
+							public void windowDeiconified(WindowEvent e) {
+							}
+							@Override
+							public void windowDeactivated(WindowEvent e) {
+							}
+							@Override
+							public void windowClosing(WindowEvent e) {
+								toggleDockingState();
+							}
+							@Override
+							public void windowActivated(WindowEvent e) {
+							}
+						});
+						observed = true;
+					}
+					dockButton.setText("Dock");
+					infoPanel.setVisible(true);
+					docked = false;
+					closureView.selectTabIndex(0);
+				} else {
+					if (docked != null) {
+						ExtractionModelEditor.this.extractionModelFrame.pendingDecisionsDialog.setVisible(false);
+					}
+					closureView.addTabComponent("Migration pending", pendingDecisionsPanel);
+					closureView.selectTabComponent(pendingDecisionsPanel);
+					dockButton.setText("Undock");
+					infoPanel.setVisible(false);
+					docked = true;
+				}
+				ExtractionModelEditor.this.extractionModelFrame.modelMigrationMenuItem.setEnabled(!Boolean.FALSE.equals(docked));
+				activateDesictionPendingButton.setEnabled(docked);
+			}
+			@Override
+			protected void activate() {
+				activateDesictionPendingButton.setVisible(true);
+				ExtractionModelEditor.this.extractionModelFrame.modelMigrationMenuItem.setEnabled(true);
+				if (first) {
+					first = false;
+					if (!decisionMade) {
+						toggleDockingState();
+					}
+				}
+			}
+			@Override
+			protected void deactivate() {
+				activateDesictionPendingButton.setVisible(false);
+				ExtractionModelEditor.this.extractionModelFrame.modelMigrationMenuItem.setEnabled(false);
+			}
+			@Override
+			protected void markDirty() {
+				ExtractionModelEditor.this.markDirty();
+			}
+		};
+
 		Container cVContentPane = closureView.getContentPane();
 		closureView.dispose();
 		toolPanel.add(cVContentPane, java.awt.BorderLayout.CENTER);
@@ -339,7 +510,16 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
 		layeredPane.setLayer(graphContainer, 1);
 		layeredPane.setLayer(toolBarPanel, 2);
 		layeredPane.setLayer(messagePanel, 2);
+		layeredPane.setLayer(undoViewHolder, 110);
 		layeredPane.setLayout(new GridBagLayout());
+		gridBagConstraints = new GridBagConstraints();
+		gridBagConstraints.gridx = 0;
+		gridBagConstraints.gridy = 0;
+		gridBagConstraints.anchor = java.awt.GridBagConstraints.NORTHEAST;
+		gridBagConstraints.weightx = 0;
+		gridBagConstraints.weighty = 0;
+		gridBagConstraints.insets = new Insets(16, 0, 0, 4);
+		layeredPane.add(undoViewHolder, gridBagConstraints);
 		gridBagConstraints = new GridBagConstraints();
 		gridBagConstraints.gridx = 0;
 		gridBagConstraints.gridy = 0;
@@ -481,7 +661,7 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
 			@Override
 			public void actionPerformed(ActionEvent e) {
 				if (currentAssociation != null) {
-					currentAssociation.setOrResetFKNullFilter(restrictionEditor.fkToNullCheckBox.isSelected());
+					setOrResetFKNullFilter(currentAssociation, restrictionEditor.fkToNullCheckBox.isSelected());
 				}
 				onApply(false);
 			}
@@ -649,7 +829,7 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
 		leftButton.addActionListener(new ActionListener() {
 			@Override
 			public void actionPerformed(ActionEvent arg0) {
-				undo();
+				navigateBack();
 			}
 		});
 		
@@ -657,9 +837,24 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
 		updateAdditionalSubjectsButton();
 	}
 
+	public void undoChange() {
+		undoManager.undo();
+	}
+
+	public void redoChange() {
+		undoManager.redo();
+	}
+
+	public void openPendingDecisionsEditor() {
+		pendingDecisionsPanel.toggleDockingState();
+	}
+
 	private void updateAdditionalSubjectsButton() {
 		int n = extractionModel.additionalSubjects.size();
 		additionalSubjectsButton.setText("Additional Subjects" + (n > 0? " (" + n + ")" : ""));
+		if (extractionModelFrame != null && closureBorderView != null) {
+			closureBorderView.refresh();
+		}
 	}
 
 	/**
@@ -828,6 +1023,7 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
         layeredPane = new javax.swing.JLayeredPane();
         toolBarPanel = new javax.swing.JPanel();
         graphContainer = new javax.swing.JPanel();
+        undoViewHolder = new javax.swing.JPanel();
         inspectorHolder = new javax.swing.JPanel();
         focusPanel = new javax.swing.JPanel();
         focusLabelPanel = new javax.swing.JPanel();
@@ -835,6 +1031,7 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
         rootTable = new JComboBox();
         resetFocus = new javax.swing.JButton();
         leftButton = new javax.swing.JButton();
+        activateDesictionPendingButton = new javax.swing.JButton();
         rightBorderPanel = new javax.swing.JPanel();
         messagePanel = new javax.swing.JPanel();
         neighborHolderPanel = new javax.swing.JPanel();
@@ -899,6 +1096,7 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
 
         jSplitPane2.setOrientation(javax.swing.JSplitPane.VERTICAL_SPLIT);
         jSplitPane2.setResizeWeight(1.0);
+        jSplitPane2.setContinuousLayout(true);
         jSplitPane2.setOneTouchExpandable(true);
 
         toolBarPanel.setBackground(new java.awt.Color(255, 255, 255));
@@ -911,6 +1109,12 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
         graphContainer.setLayout(new java.awt.BorderLayout());
         layeredPane.add(graphContainer);
         graphContainer.setBounds(0, 0, 0, 0);
+
+        undoViewHolder.setOpaque(false);
+        undoViewHolder.setLayout(new java.awt.GridBagLayout());
+        layeredPane.setLayer(undoViewHolder, javax.swing.JLayeredPane.PALETTE_LAYER);
+        layeredPane.add(undoViewHolder);
+        undoViewHolder.setBounds(0, 0, 0, 0);
 
         inspectorHolder.setOpaque(false);
         inspectorHolder.setLayout(new java.awt.GridBagLayout());
@@ -933,8 +1137,7 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
         rootTable.setMaximumRowCount(18);
         rootTable.setModel(getTableListModel());
         rootTable.addItemListener(new java.awt.event.ItemListener() {
-            @Override
-			public void itemStateChanged(java.awt.event.ItemEvent evt) {
+            public void itemStateChanged(java.awt.event.ItemEvent evt) {
                 rootTableItemStateChanged(evt);
             }
         });
@@ -945,8 +1148,7 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
 
         resetFocus.setText("Reset");
         resetFocus.addActionListener(new java.awt.event.ActionListener() {
-            @Override
-			public void actionPerformed(java.awt.event.ActionEvent evt) {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
                 resetFocusActionPerformed(evt);
             }
         });
@@ -968,9 +1170,23 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
         gridBagConstraints.anchor = java.awt.GridBagConstraints.WEST;
         focusPanel.add(leftButton, gridBagConstraints);
 
+        activateDesictionPendingButton.setBackground(new java.awt.Color(255, 153, 152));
+        activateDesictionPendingButton.setForeground(new java.awt.Color(0, 0, 1));
+        activateDesictionPendingButton.setText("Migration pending");
+        activateDesictionPendingButton.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                activateDesictionPendingButtonActionPerformed(evt);
+            }
+        });
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 10;
+        gridBagConstraints.gridy = 1;
+        gridBagConstraints.insets = new java.awt.Insets(0, 16, 0, 0);
+        focusPanel.add(activateDesictionPendingButton, gridBagConstraints);
+
         layeredPane.setLayer(focusPanel, javax.swing.JLayeredPane.PALETTE_LAYER);
         layeredPane.add(focusPanel);
-        focusPanel.setBounds(0, 0, 154, 29);
+        focusPanel.setBounds(0, 0, 287, 29);
 
         rightBorderPanel.setOpaque(false);
         rightBorderPanel.setLayout(new java.awt.GridBagLayout());
@@ -1051,8 +1267,7 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
 
         additionalSubjectsButton.setText("Additional Subjects");
         additionalSubjectsButton.addActionListener(new java.awt.event.ActionListener() {
-            @Override
-			public void actionPerformed(java.awt.event.ActionEvent evt) {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
                 additionalSubjectsButtonActionPerformed(evt);
             }
         });
@@ -1096,8 +1311,7 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
         subjectTable.setMaximumRowCount(18);
         subjectTable.setModel(subjectListModel());
         subjectTable.addItemListener(new java.awt.event.ItemListener() {
-            @Override
-			public void itemStateChanged(java.awt.event.ItemEvent evt) {
+            public void itemStateChanged(java.awt.event.ItemEvent evt) {
                 subjectTableItemStateChanged(evt);
             }
         });
@@ -1112,8 +1326,7 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
 
         exportFormat.setModel(new javax.swing.DefaultComboBoxModel(new String[] { "Item 1", "Item 2", "Item 3", "Item 4" }));
         exportFormat.addItemListener(new java.awt.event.ItemListener() {
-            @Override
-			public void itemStateChanged(java.awt.event.ItemEvent evt) {
+            public void itemStateChanged(java.awt.event.ItemEvent evt) {
                 onExportModusChanged(evt);
             }
         });
@@ -1133,8 +1346,7 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
 
         openXmlSettings.setText("Setting");
         openXmlSettings.addActionListener(new java.awt.event.ActionListener() {
-            @Override
-			public void actionPerformed(java.awt.event.ActionEvent evt) {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
                 openXmlSettingsActionPerformed(evt);
             }
         });
@@ -1164,14 +1376,12 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
         tree.setAutoscrolls(true);
         tree.setCellRenderer(getTreeCellRenderer(tree.getCellRenderer()));
         tree.addTreeSelectionListener(new javax.swing.event.TreeSelectionListener() {
-            @Override
-			public void valueChanged(javax.swing.event.TreeSelectionEvent evt) {
+            public void valueChanged(javax.swing.event.TreeSelectionEvent evt) {
                 treeValueChanged(evt);
             }
         });
         tree.addMouseListener(new java.awt.event.MouseAdapter() {
-            @Override
-			public void mouseClicked(java.awt.event.MouseEvent evt) {
+            public void mouseClicked(java.awt.event.MouseEvent evt) {
                 treeMouseClicked(evt);
             }
         });
@@ -1210,8 +1420,7 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
 
         aggregationCombobox.setModel(getAggregationModel());
         aggregationCombobox.addActionListener(new java.awt.event.ActionListener() {
-            @Override
-			public void actionPerformed(java.awt.event.ActionEvent evt) {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
                 aggregationComboboxActionPerformed(evt);
             }
         });
@@ -1234,8 +1443,7 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
 
         xmlTagApply.setText("apply");
         xmlTagApply.addActionListener(new java.awt.event.ActionListener() {
-            @Override
-			public void actionPerformed(java.awt.event.ActionEvent evt) {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
                 xmlTagApplyActionPerformed(evt);
             }
         });
@@ -1243,8 +1451,7 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
 
         mapColumns.setText("map columns");
         mapColumns.addActionListener(new java.awt.event.ActionListener() {
-            @Override
-			public void actionPerformed(java.awt.event.ActionEvent evt) {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
                 mapColumnsActionPerformed(evt);
             }
         });
@@ -1422,8 +1629,7 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
 			 xmlSettingsDialog = new XmlSettingsDialog(extractionModelFrame);
 		}
 		if (xmlSettingsDialog.edit(dataModel)) {
-			needsSave = true;
-			ExtractionModelEditor.this.extractionModelFrame.updateTitle(needsSave);
+			markDirty();
 		}
 	}//GEN-LAST:event_openXmlSettingsActionPerformed
 
@@ -1432,13 +1638,24 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
 		tagField.setEditable(AggregationSchema.NONE != aggregationCombobox.getSelectedItem() && AggregationSchema.FLAT != aggregationCombobox.getSelectedItem());
 		if (currentAssociation != null) {
 			if (currentAssociation.getAggregationSchema() != aggregationCombobox.getSelectedItem()) {
-				currentAssociation.setAggregationSchema((AggregationSchema) aggregationCombobox.getSelectedItem());
-				needsSave = true;
-				ExtractionModelEditor.this.extractionModelFrame.updateTitle(needsSave);
-				updateSketch();
+				final AggregationSchema selectedItem = (AggregationSchema) aggregationCombobox.getSelectedItem();
+				setAggregationSchema(currentAssociation, selectedItem);
 			}
 		}
 	}//GEN-LAST:event_aggregationComboboxActionPerformed
+
+	private void setAggregationSchema(final Association association, AggregationSchema aggregationSchema) {
+		final AggregationSchema old = currentAssociation.getAggregationSchema();
+		currentAssociation.setAggregationSchema(aggregationSchema);
+		markDirty();
+		updateSketch();
+		undoManager.push(new CompensationAction(1, "changed aggregation", dataModel.getDisplayName(association.destination)) {
+			@Override
+			public void run() {
+				setAggregationSchema(association, old);
+			}
+		});
+	}
 
 	private boolean rootTableItemStateChangedSetRoot = true;
 	private void rootTableItemStateChanged(java.awt.event.ItemEvent evt) {//GEN-FIRST:event_rootTableItemStateChanged
@@ -1807,13 +2024,10 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
 	 */
 	public void onApply(boolean applyButtonKlicked) {
 		if (currentAssociation != null) {
-			if (!needsSave) {
-				needsSave = true;
-				extractionModelFrame.updateTitle(needsSave);
-			}
+			markDirty();
 
 			if (restrictionEditor.restricted.isSelected() && currentAssociation.hasNullableFK() && currentAssociation.fkHasNullFilter()) {
-				currentAssociation.setOrResetFKNullFilter(false);
+				setOrResetFKNullFilter(currentAssociation, false);
 			}
 
 			String condition;
@@ -1830,28 +2044,29 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
 					condition = ConditionEditor.toMultiLine(restrictionEditor.restriction.getText()).trim();
 				}
 			}
-			dataModel.getRestrictionModel().addRestriction(currentAssociation.source, currentAssociation, condition, "GUI", true, new HashMap<String, String>());
-			tree.repaint();
-			graphView.display.invalidate();
-			restrictionsTable.setModel(restrictionTableModel());
-			String saveInitialRestrictionCondition = initialRestrictionCondition;
-			initRestrictionEditor(currentAssociation, currentNode);
-			initialRestrictionCondition = saveInitialRestrictionCondition;
-			closureView.refresh();
-			closureBorderView.refresh();
-			extractionModelFrame.restrictedDependenciesView.refresh();
-			tree.grabFocus();
+			addRestriction(currentAssociation.source, currentAssociation, condition, true);
+			updateView();
 		}
+	}
+
+	private void updateView() {
+		tree.repaint();
+		graphView.display.invalidate();
+		restrictionsTable.setModel(restrictionTableModel());
+		String saveInitialRestrictionCondition = initialRestrictionCondition;
+		initRestrictionEditor(currentAssociation, currentNode);
+		initialRestrictionCondition = saveInitialRestrictionCondition;
+		closureView.refresh();
+		closureBorderView.refresh();
+		extractionModelFrame.restrictedDependenciesView.refresh();
+		tree.grabFocus();
 	}
 	
 	public void removeRestrictions(Collection<Association> associations) {
 		for (Association association: associations) {
-			if (!needsSave) {
-				needsSave = true;
-				extractionModelFrame.updateTitle(needsSave);
-			}
+			markDirty();
 			String condition = "";
-			dataModel.getRestrictionModel().addRestriction(association.source, association, condition, "GUI", true, new HashMap<String, String>());
+			addRestriction(association.source, association, condition, false);
 			graphView.setSelection(association);
 		}
 		tree.repaint();
@@ -2017,15 +2232,25 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
 				  tag = null;
 			  }
 			  if (!currentAssociation.getAggregationTagName().equals(tag)) {
-				  currentAssociation.setAggregationTagName(tag);
-				  tagField.setText(currentAssociation.getAggregationTagName());
-				  needsSave = true;
-				  ExtractionModelEditor.this.extractionModelFrame.updateTitle(needsSave);
+				  setAggregationTagName(currentAssociation, tag);
 			  }
-			  updateSketch();
-			  xmlTagApply.setEnabled(false);
 		  }
 	  }//GEN-LAST:event_xmlMappingApplyButtonActionPerformed
+
+	private void setAggregationTagName(final Association association, String tag) {
+		final String old = association.getAggregationTagName();
+		association.setAggregationTagName(tag);
+		tagField.setText(currentAssociation.getAggregationTagName());
+		markDirty();
+		updateSketch();
+		xmlTagApply.setEnabled(false);
+		undoManager.push(new CompensationAction(1, "changed tag", dataModel.getDisplayName(association.destination)) {
+			@Override
+			public void run() {
+				setAggregationTagName(association, old);
+			}
+		});
+	}
 
 	private void onExportModusChanged(java.awt.event.ItemEvent evt) {//GEN-FIRST:event_onExportModusChanged
 		ScriptFormat f = (ScriptFormat) exportFormat.getSelectedItem();
@@ -2040,21 +2265,34 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
 
 	private void subjectTableItemStateChanged(java.awt.event.ItemEvent evt) {//GEN-FIRST:event_subjectTableItemStateChanged
 		Object selectedItem = subjectTable.getSelectedItem();
+		Table newSubject = null;
 		if (selectedItem instanceof String) {
 			if (dataModel.getTableByDisplayName(selectedItem.toString()) != null) {
-				currentSubjectClosure = null; // force re-calculation
-				subject = dataModel.getTableByDisplayName(selectedItem
+				newSubject = dataModel.getTableByDisplayName(selectedItem
 						.toString());
 			}
 		}
+		changeSubject(newSubject);
+	}//GEN-LAST:event_subjectTableItemStateChanged
+
+	private void changeSubject(Table newSubject) {
+		if (newSubject != null && newSubject != subject) {
+			final Table oldSubject = subject;
+			undoManager.push(new CompensationAction(1, "changed subject", dataModel.getDisplayName(oldSubject)) {
+				@Override
+				public void run() {
+					subjectTable.setSelectedItem(dataModel.getDisplayName(oldSubject));
+				}
+			});
+			currentSubjectClosure = null; // force re-calculation
+			subject = newSubject;
+			pendingDecisionsPanel.updateView();
+			markDirty();
+		}
 		rootTable.setModel(getTableListModel());
 		rootTable.setSelectedItem(null);
-		rootTable.setSelectedItem(selectedItem);
-		if (!needsSave) {
-			needsSave = true;
-			extractionModelFrame.updateTitle(needsSave);
-		}
-	}//GEN-LAST:event_subjectTableItemStateChanged
+		rootTable.setSelectedItem(subjectTable.getSelectedItem());
+	}
 
 	private void resetFocusActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_resetFocusActionPerformed
 		rootTable.setSelectedItem(subjectTable.getSelectedItem());
@@ -2068,12 +2306,32 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
 		} finally {
 			UIUtil.resetWaitCursor(this);
 		}
+		ArrayList<AdditionalSubject> oldSubjects = new ArrayList<ExtractionModel.AdditionalSubject>(extractionModel.additionalSubjects);
 		if (additionalSubjectsDialog.edit()) {
-			needsSave = true;
-			updateAdditionalSubjectsButton();
-			extractionModelFrame.updateTitle(needsSave);
+			ArrayList<AdditionalSubject> newSubjects = new ArrayList<ExtractionModel.AdditionalSubject>(extractionModel.additionalSubjects);
+			extractionModel.additionalSubjects = oldSubjects;
+			changeAdditionalSubjects(newSubjects);
 		}
 	}//GEN-LAST:event_additionalSubjectsButtonActionPerformed
+
+    private void changeAdditionalSubjects(List<AdditionalSubject> newSubjects) {
+    	final ArrayList<AdditionalSubject> oldSubjects = new ArrayList<ExtractionModel.AdditionalSubject>(extractionModel.additionalSubjects);
+		extractionModel.additionalSubjects = new ArrayList<>(newSubjects);
+		currentSubjectClosure = null; // force re-calculation
+		markDirty();
+		updateAdditionalSubjectsButton();
+		pendingDecisionsPanel.updateView();
+		undoManager.push(new CompensationAction(1, "changed additional subjects", null) {
+			@Override
+			public void run() {
+				changeAdditionalSubjects(oldSubjects);
+			}
+		});
+	}
+
+	private void activateDesictionPendingButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_activateDesictionPendingButtonActionPerformed
+    	pendingDecisionsPanel.toggleDockingState();
+    }//GEN-LAST:event_activateDesictionPendingButtonActionPerformed
 
 	/**
 	 * Renderer for the tree-view.
@@ -2342,6 +2600,7 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
 		if (!suppressRestrictionSelection) {
 			captureLayout();
 			try {
+				pendingDecisionsPanel.selectAssociation(association);
 				clearMessageBox();
 				updateNeighborHolderPanel(association == null? null : association.destination);
 				suppressRestrictionSelection = true;
@@ -2562,15 +2821,12 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
 			for (Association association: table.associations) {
 //				if (!association.isInsertDestinationBeforeSource()) {
 					if (context == null || association.source.equals(context) || association.destination.equals(context)) {
-						dataModel.getRestrictionModel().addRestriction(table, association, "", "GUI", true, new HashMap<String, String>());
+						addRestriction(table, association, "", context != null);
 					}
 //				}
 			}
 		}
-		if (!needsSave) {
-			needsSave = true;
-			extractionModelFrame.updateTitle(needsSave);
-		}
+		markDirty();
 		tree.repaint();
 		restrictionsTable.setModel(restrictionTableModel());
 		initRestrictionEditor(currentAssociation, currentNode);
@@ -2607,16 +2863,13 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
 				if (!association.isInsertDestinationBeforeSource()) {
 					if (association.getName() != null && !"".equals(association.getName().trim())) {
 						if (context == null || association.source.equals(context) || association.destination.equals(context)) {
-							dataModel.getRestrictionModel().addRestriction(table, association, "false", "GUI", true, new HashMap<String, String>());
+							addRestriction(table, association, "false", context != null);
 						}
 					}
 				}
 			}
 		}
-		if (!needsSave) {
-			needsSave = true;
-			extractionModelFrame.updateTitle(needsSave);
-		}
+		markDirty();
 		tree.repaint();
 		restrictionsTable.setModel(restrictionTableModel());
 		initRestrictionEditor(currentAssociation, currentNode);
@@ -2650,11 +2903,8 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
 	 * Add restriction.
 	 */
 	public void ignorAssociation(Association association) {
-		dataModel.getRestrictionModel().addRestriction(association.source, association, "false", "GUI", true, new HashMap<String, String>());
-		if (!needsSave) {
-			needsSave = true;
-			extractionModelFrame.updateTitle(needsSave);
-		}
+		addRestriction(association.source, association, "false", false);
+		markDirty();
 		tree.repaint();
 		restrictionsTable.setModel(restrictionTableModel());
 		initRestrictionEditor(currentAssociation, currentNode);
@@ -2668,11 +2918,8 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
 	 * Removes restrictions.
 	 */
 	public void removeRestriction(Association association) {
-		dataModel.getRestrictionModel().addRestriction(association.source, association, "", "GUI", true, new HashMap<String, String>());
-		if (!needsSave) {
-			needsSave = true;
-			extractionModelFrame.updateTitle(needsSave);
-		}
+		addRestriction(association.source, association, "", true);
+		markDirty();
 		tree.repaint();
 		restrictionsTable.setModel(restrictionTableModel());
 		initRestrictionEditor(currentAssociation, currentNode);
@@ -2690,8 +2937,51 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
 	}
 
 	/**
+	 * Adds a restriction to a association.
+	 * 
+	 * @param association the association
+	 * @param condition the restriction-condition
+	 */
+	private void addRestriction(final Table source, final Association association, String condition, final boolean withWhere) {
+		final String oldRestriction;
+		String oc = dataModel.getRestrictionModel().getRestriction(association);
+		
+		if (oc == null) {
+			oc = "";
+		}
+		oldRestriction = oc;
+		
+		if (oldRestriction.equals(condition)) {
+			return;
+		}
+		
+		boolean resetFilter = dataModel.getRestrictionModel().addRestriction(source, association, condition, "GUI", true, new HashMap<String, String>());
+		pendingDecisionsPanel.decisionMade(association);
+		if (withWhere) {
+			++UISettings.s4;
+		}
+
+		undoManager.push(new CompensationAction(100, "".equals(oc)? "removed restriction" : ("true".equals(oc) || "ignore".equals(oc))? "disabled assocation" : "added restriction", withWhere? dataModel.getDisplayName(association.destination) : null) {
+			@Override
+			public void run() {
+				addRestriction(source, association, oldRestriction, withWhere);
+			}
+		});
+		
+		if (resetFilter) {
+			undoManager.push(new CompensationAction(0, null, null) {
+				@Override
+				public void run() {
+					setOrResetFKNullFilter(association, true);
+				}
+			});
+		}
+	}
+
+	/**
 	 * Model for aggregation combobox.
 	 */
+	@SuppressWarnings({ "rawtypes", "unchecked" })
 	private ComboBoxModel getAggregationModel() {
 		DefaultComboBoxModel model = new DefaultComboBoxModel();
 		for (AggregationSchema aggregation: AggregationSchema.values()) {
@@ -2706,11 +2996,30 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
 	 * @param table the table
 	 */
 	public void openColumnMapper(Table table) {
+		String old = table.getXmlTemplate();
 		if (columnMapperDialog.edit(dataModel, table)) {
-			updateSketch();
-			markDirty();
+			String template = table.getXmlTemplate();
+			table.setXmlTemplate(old);
+			changeXmlTemplate(table, template);
 		}
+	}
+
+	private void changeXmlTemplate(final Table table, String template) {
+		final String old = table.getXmlTemplate();
+		table.setXmlTemplate(template);
+		updateSketch();
+		markDirty();
+		undoManager.push(new CompensationAction(1, "changed XML template", dataModel.getDisplayName(table)) {
+			@Override
+			public void run() {
+				changeXmlTemplate(table, old);
+			}
+		});
 	} 
+
+	public void resetUndoStack() {
+		undoManager.reset();
+	}
 
 	/**
 	 * Marks the model as dirty (needs save)
@@ -2732,22 +3041,33 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
 			return Collections.emptySet();
 		}
 		if (currentSubjectClosure == null || dataModel.getVersion() != closureVersion) {
-			currentSubjectClosure = subject.closure(true);
-			closureVersion = dataModel.getVersion(); 
+			Set<Table> subjects = new HashSet<Table>();
+			if (extractionModel.additionalSubjects != null) {
+				for (AdditionalSubject as: extractionModel.additionalSubjects) {
+					subjects.add(as.getSubject());
+				}
+			}
+			subjects.add(subject);
+			
+			currentSubjectClosure = new HashSet<Table>();
+			for (Table subject: subjects) {
+				for (Table table: subject.closure(currentSubjectClosure, true)) {
+					currentSubjectClosure.add(table);
+				}
+			}
+			closureVersion = dataModel.getVersion();
 		}
 		return currentSubjectClosure;
 	}
 
-	
-	private static final int MAX_UNDOSTACKSIZE = 20;
+	private static final int MAX_NAVIGATIONSTACKSIZE = 20;
 
 	private static class Layout {
 		Table root;
-		Rectangle2D bounds;
 		Map<String, double[]> positions = new HashMap<String,double[]>();
 	};
 	
-	private Deque<Layout> undoStack = new ArrayDeque<Layout>();
+	private Deque<Layout> navigationStack = new ArrayDeque<Layout>();
 	
 	private int captureLevel = 0;
 	
@@ -2768,15 +3088,15 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
 				executionContext.getLayoutStorage().setTempStorage(layout.positions);
 				graphView.storeLayout();
 				
-				if (!undoStack.isEmpty()) {
-					if (undoStack.peek().positions.keySet().equals(layout.positions.keySet())) {
+				if (!navigationStack.isEmpty()) {
+					if (navigationStack.peek().positions.keySet().equals(layout.positions.keySet())) {
 						return;
 					}
 				}
 				
-				undoStack.push(layout);
-				if (undoStack.size() > MAX_UNDOSTACKSIZE) {
-					undoStack.removeLast();
+				navigationStack.push(layout);
+				if (navigationStack.size() > MAX_NAVIGATIONSTACKSIZE) {
+					navigationStack.removeLast();
 				}
 				updateLeftButton();
 			}
@@ -2793,18 +3113,18 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
 			--captureLevel;
 		}
 		if (captureLevel == 0) {
-			if (!undoStack.isEmpty()) {
-				if (undoStack.peek().positions.size() > 1400 || undoStack.peek().positions.keySet().equals(graphView.visibleItems())) {
-					undoStack.pop();
+			if (!navigationStack.isEmpty()) {
+				if (navigationStack.peek().positions.size() > 1400 || navigationStack.peek().positions.keySet().equals(graphView.visibleItems())) {
+					navigationStack.pop();
 					updateLeftButton();
 				}
 			}
 		}
 	}
 	
-	public void undo() {
-		if (!undoStack.isEmpty()) {
-			Layout layout = undoStack.pop();
+	public void navigateBack() {
+		if (!navigationStack.isEmpty()) {
+			Layout layout = navigationStack.pop();
 			try {
 				++captureLevel;
 				executionContext.getLayoutStorage().setTempStorage(layout.positions);
@@ -2832,7 +3152,7 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
 	}
 
 	private void updateLeftButton() {
-		leftButton.setVisible(!undoStack.isEmpty());
+		leftButton.setVisible(!navigationStack.isEmpty());
 	}
 
 	/**
@@ -2851,6 +3171,7 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
 	private JComponent messageBox;
 	
 	public void addMessageBox(JComponent messageBox) {
+		undoManager.hideView();
 		clearMessageBox();
 		this.messageBox = messageBox;
 		messagePanel.add(this.messageBox);
@@ -2884,7 +3205,28 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
 		return additionalPopupMenuItems;
 	}
 
+    private void setOrResetFKNullFilter(final Association association, final boolean set) {
+    	if (association.setOrResetFKNullFilter(set)) {
+    		undoManager.push(new CompensationAction(1, set? "set filter" : "removed filter", dataModel.getDisplayName(association.source)) {
+    			@Override
+    			public void run() {
+    				setOrResetFKNullFilter(association, !set);
+    			}
+    		});
+    	}
+	}
+
+	/**
+	 * Gets the undo mananger.
+	 * 
+	 * @return the undo mananger
+	 */
+	public UndoManager getUndoManager() {
+		return undoManager;
+	}
+
     // Variables declaration - do not modify//GEN-BEGIN:variables
+    private javax.swing.JButton activateDesictionPendingButton;
     private javax.swing.JButton additionalSubjectsButton;
     private JComboBox aggregationCombobox;
     private javax.swing.JLabel associatedWith;
@@ -2947,6 +3289,7 @@ public class ExtractionModelEditor extends javax.swing.JPanel {
     javax.swing.JPanel toolBarPanel;
     private javax.swing.JPanel toolPanel;
     private javax.swing.JTree tree;
+    javax.swing.JPanel undoViewHolder;
     private javax.swing.JPanel xmlMappingPanel;
     private javax.swing.JButton xmlTagApply;
     // End of variables declaration//GEN-END:variables

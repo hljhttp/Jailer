@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2018 the original author or authors.
+ * Copyright 2007 - 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
  */
 package net.sf.jailer.ui.databrowser.metadata;
 
+import java.nio.channels.ReadPendingException;
 import java.sql.CallableStatement;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
@@ -101,7 +102,16 @@ public class MDTable extends MDObject {
      * @return columns of table
      */
     public List<String> getColumns() throws SQLException {
-        readColumns();
+        return getColumns(true);
+    }
+
+    /**
+     * Gets columns of table
+     * 
+     * @return columns of table
+     */
+    public List<String> getColumns(boolean cached) throws SQLException {
+        readColumns(cached);
         return columns;
     }
 
@@ -121,7 +131,7 @@ public class MDTable extends MDObject {
                 @Override
                 public void run() {
                     try {
-                        getColumns();
+                        getColumns(false);
                     } catch (SQLException e) {
                     	logger.info("error", e);
                     }
@@ -149,11 +159,20 @@ public class MDTable extends MDObject {
      * @return primary key columns of table
      */
     public List<String> getPrimaryKeyColumns() throws SQLException {
-        readColumns();
+        return getPrimaryKeyColumns(true);
+    }
+
+    /**
+     * Gets primary key columns of table
+     * 
+     * @return primary key columns of table
+     */
+    public List<String> getPrimaryKeyColumns(boolean cached) throws SQLException {
+        readColumns(cached);
         return primaryKey;
     }
 
-    private synchronized void readColumns() throws SQLException {
+    private synchronized void readColumns(boolean cached) throws SQLException {
         if (columns == null) {
             columns = new ArrayList<String>();
             columnTypes = new ArrayList<Column>();
@@ -162,7 +181,7 @@ public class MDTable extends MDObject {
                 MetaDataSource metaDataSource = getMetaDataSource();
                 synchronized (metaDataSource.getSession().getMetaData()) {
                     ResultSet resultSet = JDBCMetaDataBasedModelElementFinder.getColumns(getSchema().getMetaDataSource().getSession(), getSchema().getMetaDataSource().getSession().getMetaData(), Quoting.staticUnquote(getSchema().getName()), Quoting.staticUnquote(getName()), "%", 
-                    		true, isSynonym? "SYNONYM" : null);
+                    		cached, false, isSynonym? "SYNONYM" : null);
                     while (resultSet.next()) {
                         String colName = metaDataSource.getQuoting().quote(resultSet.getString(4));
                         columns.add(colName);

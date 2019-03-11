@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2018 the original author or authors.
+ * Copyright 2007 - 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -57,7 +57,7 @@ public class MDSchema extends MDObject {
 	private List<MDTable> tables;
 	private static final BlockingQueue<Runnable> loadTableColumnsQueue = new LinkedBlockingQueue<Runnable>();
 	private static final BlockingQueue<Runnable> loadTablesQueue = new LinkedBlockingQueue<Runnable>();
-	private static final BlockingQueue<Runnable> loadMetaDataQueues[] = new LinkedBlockingQueue[2];
+	private static final BlockingQueue<Runnable> loadMetaDataQueues[] = new LinkedBlockingQueue[3];
 	private boolean valid = true;
 	private AtomicBoolean loaded = new AtomicBoolean(false);
 	private AtomicBoolean constraintsLoaded = new AtomicBoolean(false);
@@ -174,7 +174,7 @@ public class MDSchema extends MDObject {
 											try {
 												table.getColumns();
 											} catch (SQLException e) {
-												logger.info("error", e);
+												// logger.info("error", e);
 											}
 										}
 									}
@@ -239,11 +239,14 @@ public class MDSchema extends MDObject {
 	/**
 	 * Asynchronously loads the tables.
 	 */
-	public void loadTables(final boolean loadTableColumns, final Runnable afterLoadAction) {
+	public void loadTables(final boolean loadTableColumns, final Runnable afterLoadAction, final Runnable afterAvailableAction) {
 		loadTablesQueue.add(new Runnable() {
 			@Override
 			public void run() {
 				getTables(loadTableColumns, afterLoadAction);
+				if (afterAvailableAction != null) {
+					afterAvailableAction.run();
+				}
 			}
 		});
 	}

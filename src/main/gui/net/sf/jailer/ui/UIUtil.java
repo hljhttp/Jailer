@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2018 the original author or authors.
+ * Copyright 2007 - 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,6 +29,8 @@ import java.awt.Toolkit;
 import java.awt.Window;
 import java.awt.datatransfer.Clipboard;
 import java.awt.datatransfer.StringSelection;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 import java.awt.event.KeyEvent;
 import java.awt.event.KeyListener;
 import java.awt.event.MouseAdapter;
@@ -48,7 +50,11 @@ import java.io.OutputStream;
 import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.io.UnsupportedEncodingException;
+import java.net.URLEncoder;
+import java.text.NumberFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -58,6 +64,7 @@ import java.util.regex.Pattern;
 
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
+import javax.swing.JCheckBoxMenuItem;
 import javax.swing.JComponent;
 import javax.swing.JDialog;
 import javax.swing.JLabel;
@@ -79,12 +86,15 @@ import net.sf.jailer.JailerVersion;
 import net.sf.jailer.database.Session;
 import net.sf.jailer.database.SqlException;
 import net.sf.jailer.datamodel.DataModel;
+import net.sf.jailer.extractionmodel.ExtractionModel.IncompatibleModelException;
 import net.sf.jailer.progress.ProgressListener;
 import net.sf.jailer.ui.databrowser.BrowserContentPane.TableModelItem;
 import net.sf.jailer.ui.databrowser.Row;
 import net.sf.jailer.ui.scrollmenu.JScrollC2PopupMenu;
 import net.sf.jailer.ui.scrollmenu.JScrollPopupMenu;
 import net.sf.jailer.ui.syntaxtextarea.RSyntaxTextAreaWithSQLSyntaxStyle;
+import net.sf.jailer.ui.util.HttpUtil;
+import net.sf.jailer.ui.util.UISettings;
 import net.sf.jailer.util.CancellationException;
 import net.sf.jailer.util.CancellationHandler;
 import net.sf.jailer.util.CycleFinder;
@@ -128,12 +138,6 @@ public class UIUtil {
      */
     public static String choseFile(File selectedFile, String startDir, final String description, final String extension,
             Component parent, boolean addExtension, boolean forLoad, final boolean allowZip) {
-        final String extensionAlias;
-        if (".jm".equalsIgnoreCase(extension)) {
-            extensionAlias = ".csv";
-        } else {
-            extensionAlias = null;
-        }
         String newStartDir = restoreCurrentDir(extension);
         if (newStartDir != null) {
             startDir = newStartDir;
@@ -150,7 +154,10 @@ public class UIUtil {
             }
         }
 
-        parent = SwingUtilities.getWindowAncestor(parent);
+        Window ancestor = SwingUtilities.getWindowAncestor(parent);
+        if (ancestor != null) {
+        	parent = ancestor;
+        }
         FileDialog fileChooser;
         if (parent instanceof Dialog) {
             fileChooser = new FileDialog((Dialog) parent);
@@ -177,7 +184,7 @@ public class UIUtil {
                     }
                 }
                 if (set) {
-                    fileChooser.setFile("*" + extension + (extensionAlias != null? ";*" + extensionAlias : "") + (allowZip ? ";*" + ".zip;*" + ".gz" : ""));
+                    fileChooser.setFile("*" + extension + (allowZip ? ";*" + ".zip;*" + ".gz" : ""));
                 }
             }
         }
@@ -185,7 +192,6 @@ public class UIUtil {
             @Override
             public boolean accept(File dir, String name) {
                 return name.toLowerCase().endsWith(extension)
-                        || (extensionAlias != null && name.toLowerCase().endsWith(extensionAlias))
                         || allowZip && name.toLowerCase().endsWith(extension + ".gz")
                         || allowZip && name.toLowerCase().endsWith(extension + ".zip");
             }
@@ -210,7 +216,6 @@ public class UIUtil {
                     fn = f.getCanonicalPath();
                 }
                 if (addExtension && !(fn.endsWith(extension)
-                        || (extensionAlias != null && fn.endsWith(extensionAlias))
                         || (allowZip && (fn.endsWith(extension + ".zip") || fn.endsWith(extension + ".gz"))))) {
                     fn += extension;
                 }
@@ -224,7 +229,6 @@ public class UIUtil {
                 try {
                     fn = selFile.getCanonicalPath();
                     if (addExtension && !(fn.endsWith(extension)
-                            || (extensionAlias != null && fn.endsWith(extensionAlias))
                             || (allowZip && (fn.endsWith(extension + ".zip") || fn.endsWith(extension + ".gz"))))) {
                         fn += extension;
                     }
@@ -445,11 +449,15 @@ public class UIUtil {
                     synchronized (UIUtil.class) {
                         f = exp[0] == null;
                     }
+                    try {
+                    	CancellationHandler.checkForCancellation(null);
+                    } catch (CancellationException ce) {
+                    	cancelled = true;
+                    }
                     if (cancelled && f) {
                         JOptionPane.showMessageDialog(outputView.dialog, "Cancellation in progress...", "Cancellation",
                                 JOptionPane.INFORMATION_MESSAGE);
-                    }
-                    if (exp[0] == null && !fin[0] && !cancelled) {
+                    } else if (exp[0] == null && !fin[0] && !cancelled) {
                         if (JOptionPane.showConfirmDialog(outputView.dialog, "Cancel operation?", "Cancellation",
                                 JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE) == JOptionPane.YES_OPTION) {
                             if (!outputView.hasFinished) {
@@ -463,6 +471,7 @@ public class UIUtil {
                                 if (progressListener != null) {
                                     progressListener.newStage("cancelling", true, true);
                                 }
+                                outputView.getCancelButton().setEnabled(false);
                                 cancelled = true;
                             }
                         }
@@ -649,7 +658,16 @@ public class UIUtil {
      *            the exception
      */
     public static void showException(Component parent, String title, Throwable t, Object context) {
-        if (t instanceof DataModel.NoPrimaryKeyException || t instanceof CycleFinder.CycleFoundException) {
+        if (context == EXCEPTION_CONTEXT_USER_ERROR) {
+        	if (t instanceof IndexOutOfBoundsException
+        			|| t instanceof NullPointerException
+        			|| t instanceof ClassCastException
+        			|| t instanceof IllegalStateException
+        			|| t instanceof IllegalArgumentException) {
+        		context = null;
+        	}
+        }
+    	if (t instanceof DataModel.NoPrimaryKeyException || t instanceof CycleFinder.CycleFoundException || t instanceof IncompatibleModelException) {
             context = EXCEPTION_CONTEXT_USER_ERROR;
         }
         t.printStackTrace();
@@ -658,11 +676,14 @@ public class UIUtil {
                 t = t.getCause();
             }
         }
+    	if (t instanceof DataModel.NoPrimaryKeyException || t instanceof CycleFinder.CycleFoundException || t instanceof IncompatibleModelException) {
+            context = EXCEPTION_CONTEXT_USER_ERROR;
+        }
         if (t instanceof SqlException) {
             String message = ((SqlException) t).message;
             String sql = ((SqlException) t).sqlStatement;
-            new SqlErrorDialog(parent == null ? null : SwingUtilities.getWindowAncestor(parent),
-                    lineWrap(message, 120).toString(), sql, true, null);
+			new SqlErrorDialog(parent == null ? null : SwingUtilities.getWindowAncestor(parent),
+					((SqlException) t).isFormatted()? message : lineWrap(message, 120).toString(), sql, ((SqlException) t).isFormatted(), true, null);
             return;
         }
         String message = t.getMessage();
@@ -684,15 +705,21 @@ public class UIUtil {
         PrintWriter pw = new PrintWriter(sw);
         t.printStackTrace(pw);
         if (context != EXCEPTION_CONTEXT_USER_ERROR) {
-            contextDesc += "\nHelp Desk: https://sourceforge.net/forum/?group_id=197260";
+            contextDesc += "\nHelp Desk: https://sourceforge.net/p/jailer/discussion/";
             contextDesc += "\nMail: rwisser@users.sourceforge.net\n";
             contextDesc += "\n" + JailerVersion.APPLICATION_NAME + " " + JailerVersion.VERSION + "\n\n" + sw.toString();
             
-            sendIssue("internal", msg.toString() + "\n" + contextDesc);
+            final int MAX_CL = 1000;
+            
+			String iMsg = msg.toString() + "\n" + JailerVersion.APPLICATION_NAME + " " + JailerVersion.VERSION + "\n\n" + sw.toString();
+            if (iMsg.length() > MAX_CL) {
+            	iMsg = iMsg.substring(0, MAX_CL);
+            }
+			sendIssue("internal", iMsg);
         }
 
         new SqlErrorDialog(parent == null ? null : SwingUtilities.getWindowAncestor(parent), msg.toString(),
-                contextDesc, false, context == EXCEPTION_CONTEXT_USER_ERROR ? title : null);
+                contextDesc, false, false, context == EXCEPTION_CONTEXT_USER_ERROR ? title : null);
     }
 
     private static StringBuilder lineWrap(String message, int maxwidth) {
@@ -728,7 +755,7 @@ public class UIUtil {
         try {
             // Get the size of the screen
             Dimension dim = Toolkit.getDefaultToolkit().getScreenSize();
-            int hd = d.getY() + d.getHeight() - (dim.height - 80);
+            int hd = d.getY() + d.getHeight() - (dim.height - 60);
             if (hd > 0) {
                 d.setSize(d.getWidth(), Math.max(d.getHeight() - hd, 150));
             }
@@ -834,7 +861,20 @@ public class UIUtil {
         System.exit(0);
     }
 
-    private static void sendIssue(final String type, final String issue) {
+    public static void sendIssue(final String type, final String issue) {
+		new Thread(new Runnable() {
+			@Override
+			public void run() {
+		    	try {
+					HttpUtil.get("http://jailer.sf.net/issueReport.php?type=" + URLEncoder.encode(type, "UTF-8") + "&" + "issue=" + URLEncoder.encode(issue, "UTF-8")
+						+ "&uuid=" + URLEncoder.encode(String.valueOf(UISettings.restore("uuid")), "UTF-8")
+						+ "&ts=" + URLEncoder.encode(new Date().toString(), "UTF-8")
+						+ "&jversion=" + URLEncoder.encode(System.getProperty("java.version") + "/" + System.getProperty("java.vm.vendor") + "/" + System.getProperty("java.vm.name") + "/" + System.getProperty("os.name"), "UTF-8") + "/(" + Environment.state + ")");
+				} catch (UnsupportedEncodingException e) {
+					// ignore
+				}
+			}
+		}).start();
     }
 
     public static String toHTML(String plainText, int maxLineLength) {
@@ -1047,6 +1087,27 @@ public class UIUtil {
 	 */
 	public static void prepareUI() {
 		new RSyntaxTextAreaWithSQLSyntaxStyle(false, false);	
+	}
+
+	/**
+	 * Initializes the "Native L&F" menu items.
+	 * 
+	 * @param nativeLAFCheckBoxMenuItem the menu item
+	 */
+	public static void initPLAFMenuItem(final JCheckBoxMenuItem nativeLAFCheckBoxMenuItem, final Component parentComponent) {
+		nativeLAFCheckBoxMenuItem.setSelected(Boolean.TRUE.equals(UISettings.restore(UISettings.USE_NATIVE_PLAF)));
+		nativeLAFCheckBoxMenuItem.addActionListener(new ActionListener() {
+			@Override
+			public void actionPerformed(ActionEvent e) {
+				boolean nativeLF = nativeLAFCheckBoxMenuItem.isSelected();
+				UISettings.store(UISettings.USE_NATIVE_PLAF, nativeLF);
+				JOptionPane.showMessageDialog(parentComponent, "The look and feel has been changed.\n(Will be effective after restart)", "Look&Feel", JOptionPane.INFORMATION_MESSAGE);
+			}
+		});
+	}
+
+	public static String format(long number) {
+		return NumberFormat.getInstance().format(number);
 	}
 
 }

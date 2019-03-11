@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2018 the original author or authors.
+ * Copyright 2007 - 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -613,6 +613,24 @@ public class Table extends ModelElement implements Comparable<Table> {
 		}
 		return nonVirtualColumns;
 	}
+
+	private boolean isArtifical = false;
 	
+	/**
+	 * Sets whether this table is artificial (i.e. does not represent a table in a database).
+	 * 
+	 * @param artifical value to set
+	 */
+	public void setIsArtifical(boolean isArtifical) {
+		this.isArtifical = isArtifical;
+	}
+
+	/**
+	 * Gets whether this table is artificial (i.e. does not represent a table in a database).
+	 */
+	public boolean isArtifical() {
+		return isArtifical;
+	}
+
 }
 

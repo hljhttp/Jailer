@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2018 the original author or authors.
+ * Copyright 2007 - 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -181,7 +181,7 @@ class ExpressionAnalyzer extends AbstractExpressionVisitor {
 				for (Entry<String, MDTable> e: fromClause.entrySet()) {
 					if (tableName == null || QueryTypeAnalyser.idEquals(e.getKey(), tableName, strict)) {
 						if (e.getValue() != null) {
-							for (String col: e.getValue().getColumns()) {
+							for (String col: e.getValue().getColumns(false)) {
 								if (QueryTypeAnalyser.idEquals(col, columnName, strict)) {
 									return new Pair<String, String>(e.getKey(), col);
 								}

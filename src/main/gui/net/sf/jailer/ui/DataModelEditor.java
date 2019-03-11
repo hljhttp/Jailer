@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2018 the original author or authors.
+ * Copyright 2007 - 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -253,12 +253,14 @@ public class DataModelEditor extends javax.swing.JDialog {
 		filterHeader.setAutoChoices(AutoChoices.ENABLED);
 		filterHeader.setTable(tablesTable);
 		filterHeader.setMaxVisibleRows(20);
-
+		filterHeader.setRowHeightDelta(2);
+		
 		filterHeader = new TableFilterHeader();
 		filterHeader.setAutoChoices(AutoChoices.ENABLED);
 		filterHeader.setTable(associationsTable);
 		filterHeader.setMaxVisibleRows(20);
-
+		filterHeader.setRowHeightDelta(2);
+		
 		String modelpath = executionContext.getQualifiedDatamodelFolder();
 		try {
 			modelpath = new File(modelpath).getAbsolutePath();
@@ -391,7 +393,9 @@ public class DataModelEditor extends javax.swing.JDialog {
 		};
 	
 		tablesTable.setAutoCreateRowSorter(true);
-		
+		tablesTable.setShowVerticalLines(false);
+		tablesTable.setShowHorizontalLines(false);
+
 		tablesTable.setDefaultRenderer(Object.class, tablesListItemRenderer);
 		resetTableTableModel();
 
@@ -409,6 +413,8 @@ public class DataModelEditor extends javax.swing.JDialog {
 		associationsTable.setDefaultRenderer(Object.class, associationsListItemRenderer);
 		
 		associationsTable.setAutoCreateRowSorter(true);
+		associationsTable.setShowVerticalLines(false);
+		associationsTable.setShowHorizontalLines(false);
 		resetAssociationTableModel();
 		adjustTableColumnsWidth(associationsTable);
 
@@ -677,6 +683,7 @@ public class DataModelEditor extends javax.swing.JDialog {
         gridBagConstraints.insets = new java.awt.Insets(0, 0, 0, 22);
         getContentPane().add(nameTextField, gridBagConstraints);
 
+        jSplitPane1.setContinuousLayout(true);
         jSplitPane1.setOneTouchExpandable(true);
 
         jPanel2.setBorder(javax.swing.BorderFactory.createTitledBorder("Tables"));

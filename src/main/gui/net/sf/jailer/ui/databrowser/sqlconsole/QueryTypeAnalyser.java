@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2018 the original author or authors.
+ * Copyright 2007 - 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,6 +35,7 @@ import net.sf.jailer.ui.databrowser.metadata.MetaDataDetailsPanel;
 import net.sf.jailer.ui.databrowser.metadata.MetaDataSource;
 import net.sf.jailer.util.Pair;
 import net.sf.jailer.util.Quoting;
+import net.sf.jailer.util.SqlUtil;
 import net.sf.jsqlparser.expression.AllComparisonExpression;
 import net.sf.jsqlparser.expression.AnalyticExpression;
 import net.sf.jsqlparser.expression.AnyComparisonExpression;
@@ -99,6 +100,7 @@ import net.sf.jsqlparser.expression.operators.relational.RegExpMatchOperator;
 import net.sf.jsqlparser.expression.operators.relational.RegExpMySQLOperator;
 import net.sf.jsqlparser.parser.CCJSqlParserUtil;
 import net.sf.jsqlparser.schema.Column;
+import net.sf.jsqlparser.statement.Block;
 import net.sf.jsqlparser.statement.Commit;
 import net.sf.jsqlparser.statement.SetStatement;
 import net.sf.jsqlparser.statement.Statement;
@@ -163,7 +165,7 @@ public class QueryTypeAnalyser {
 	public static List<Table> getType(String sqlSelect, final MetaDataSource metaDataSource) {
 		net.sf.jsqlparser.statement.Statement st;
 		try {
-			st = CCJSqlParserUtil.parse(sqlSelect);
+			st = CCJSqlParserUtil.parse(SqlUtil.removeNonMeaningfulFragments(sqlSelect));
 			Map<Pair<String, String>, Collection<Pair<String, String>>> equivs = new HashMap<Pair<String,String>, Collection<Pair<String,String>>>();
 			final LinkedHashMap<String, MDTable> fromClause = analyseFromClause(st, equivs, metaDataSource);
 			final List<Pair<String	, String>> selectClause = new ArrayList<Pair<String, String>>();
@@ -233,7 +235,7 @@ public class QueryTypeAnalyser {
 										}
 										MDTable mdTable = fromClause.get(tableAlias);
 										try {
-											for (String col: mdTable.getColumns()) {
+											for (String col: mdTable.getColumns(false)) {
 												selectClause.add(new Pair<String, String>(tableAlias, col));
 											}
 										} catch (SQLException e) {
@@ -251,7 +253,7 @@ public class QueryTypeAnalyser {
 												break;
 											}
 											try {
-												for (String col: mdTable.getColumns()) {
+												for (String col: mdTable.getColumns(false)) {
 													selectClause.add(new Pair<String, String>(e.getKey(), col));
 												}
 											} catch (SQLException e2) {
@@ -290,7 +292,7 @@ public class QueryTypeAnalyser {
 			}
 			return result;
 		} catch (Exception e) {
-			logger.info("error", e);
+			// logger.info("error", e);
 		}
 		return null;
 	}
@@ -413,9 +415,9 @@ public class QueryTypeAnalyser {
 	}
 
 	private static Table createTable(MDTable theTable, String tableAlias, List<String> columnNames, List<Pair<String, String>> selectClause, Map<Pair<String, String>, Collection<Pair<String, String>>> equivs, MetaDataSource metaDataSource) throws SQLException {
-		if (theTable.getPrimaryKeyColumns().isEmpty()) {
-			return null;
-		}
+//		if (theTable.getPrimaryKeyColumns().isEmpty()) {
+//			return null;
+//		}
 		for (String pk: theTable.getPrimaryKeyColumns()) {
 			if (!columnNames.contains(pk)) {
 				boolean ok = false;
@@ -444,7 +446,7 @@ public class QueryTypeAnalyser {
 		for (String pk: theTable.getPrimaryKeyColumns()) {
 			pkColumns.add(new net.sf.jailer.datamodel.Column(pk, "", 0, -1));
 		}
-		PrimaryKey primaryKey = new PrimaryKeyFactory().createPrimaryKey(pkColumns);
+		PrimaryKey primaryKey = new PrimaryKeyFactory(null).createPrimaryKey(pkColumns, null);
 		Table toTable = theTable.getMetaDataSource().toTable(theTable);
 		Table table;
 		if (toTable != null) {
@@ -457,6 +459,7 @@ public class QueryTypeAnalyser {
 			columns.add(new net.sf.jailer.datamodel.Column(pk, "", 0, -1));
 		}
 		table.setColumns(columns);
+		table.setIsArtifical(true);
 		return table;
 	}
 
@@ -465,7 +468,7 @@ public class QueryTypeAnalyser {
 			for (Entry<String, MDTable> e: fromClause.entrySet()) {
 				if (alias == null || idEquals(e.getKey(), alias, strict)) {
 					if (e.getValue() != null) {
-						for (String column: e.getValue().getColumns()) {
+						for (String column: e.getValue().getColumns(false)) {
 							if (idEquals(column, columnName, strict)) {
 								return new Pair<String, String>(e.getKey(), column);
 							}
@@ -910,6 +913,10 @@ public class QueryTypeAnalyser {
 		@Override
 		public void visit(UseStatement use) {
 			throw new QueryTooComplexException();
+		}
+
+		@Override
+		public void visit(Block arg0) {
 		}
 		
 	}

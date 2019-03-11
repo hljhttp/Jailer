@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2018 the original author or authors.
+ * Copyright 2007 - 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,6 +33,7 @@ import java.awt.Polygon;
 import java.awt.Rectangle;
 import java.awt.RenderingHints;
 import java.awt.Shape;
+import java.awt.Toolkit;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.ComponentEvent;
@@ -117,6 +118,7 @@ import net.sf.jailer.ui.databrowser.TreeLayoutOptimizer.Node;
 import net.sf.jailer.ui.databrowser.metadata.MDTable;
 import net.sf.jailer.ui.databrowser.metadata.MetaDataSource;
 import net.sf.jailer.ui.databrowser.sqlconsole.SQLConsole;
+import net.sf.jailer.ui.util.UISettings;
 import net.sf.jailer.util.CancellationException;
 import net.sf.jailer.util.CsvFile;
 import net.sf.jailer.util.CsvFile.Line;
@@ -216,11 +218,14 @@ public abstract class Desktop extends JDesktopPane {
 			@Override
 			public void actionPerformed(ActionEvent e) {
 				// addTableBrowser(null, null, 0, null, null, queryBuilderDialog.getSQL(), null, null, true);
-				getSqlConsole(true).appendStatement(queryBuilderDialog.getSQL() + "\n;", true);
+				getSqlConsole(true).appendStatement(queryBuilderDialog.getSQL() + LF + ";", true);
 				queryBuilderDialog.setVisible(false);
 			}
 		});
-
+		if (Toolkit.getDefaultToolkit().getScreenSize().height < 740) {
+			layoutMode = LayoutMode.SMALL;
+		}
+		
 		try {
 			this.session = session;
 			setAutoscrolls(true);
@@ -282,7 +287,7 @@ public abstract class Desktop extends JDesktopPane {
 										long startTime = System.currentTimeMillis();
 										try {
 											checkAnchorRetension();
-											if (isDesktopVisible()) {
+											if (isDesktopVisible() && isAnimationEnabled()) {
 												suppressRepaintDesktop = true;
 												desktopAnimation.animate();
 												boolean cl = calculateLinks();
@@ -456,7 +461,7 @@ public abstract class Desktop extends JDesktopPane {
 				internalFrame.setVisible(true);
 				Rectangle r = layout(rowIndex < 0, parent, association, browserContentPane, new ArrayList<RowBrowser>(), 0, -1);
 				internalFrame.setBounds(r);
-				desktopAnimation.scrollRectToVisible(internalFrame.getBounds());
+				desktopAnimation.scrollRectToVisible(internalFrame.getBounds(), false);
 				try {
 					internalFrame.setSelected(true);
 				} catch (PropertyVetoException e) {
@@ -625,6 +630,10 @@ public abstract class Desktop extends JDesktopPane {
 			row = origParent.browserContentPane.rows.get(parentRowIndex);
 		}
 		
+		if (reload) {
+			++UISettings.s5;
+		}
+
 		final BrowserContentPane browserContentPane = new BrowserContentPane(datamodel.get(), table, condition, session, row, parent == null || parentRowIndex >= 0 ? null : parent.browserContentPane.rows,
 				association, parentFrame, rowsClosure, selectDistinct, reload, executionContext) {
 
@@ -918,7 +927,7 @@ public abstract class Desktop extends JDesktopPane {
 
 			@Override
 			protected void appendLayout() {
-				Desktop.this.restoreSession(tableBrowser);
+				Desktop.this.restoreSession(tableBrowser, null);
 			}
 
 			@Override
@@ -961,6 +970,11 @@ public abstract class Desktop extends JDesktopPane {
 				return Desktop.this.getRowLimit();
 			}
 
+			@Override
+			protected void changeColumnOrder(Table table) {
+				Desktop.this.changeColumnOrder(table);
+			}
+
 		};
 
 		Rectangle r = layout(parentRowIndex < 0, parent, association, browserContentPane, new ArrayList<RowBrowser>(), 0, -1);
@@ -990,6 +1004,7 @@ public abstract class Desktop extends JDesktopPane {
 			tableBrowser.color2 = getAssociationColor2(association);
 		}
 		tableBrowsers.add(tableBrowser);
+		UISettings.s2 = Math.max(tableBrowsers.size(), UISettings.s2);
 
 		initIFrame(jInternalFrame, browserContentPane);
 		
@@ -1625,9 +1640,11 @@ public abstract class Desktop extends JDesktopPane {
 		if (changed) {
 			rbSourceToLinks = null;
 		}
+		
+		animationStep = currentTimeMillis / (double) STEP_DELAY;
+		
 		if (lastAnimationStepTime + STEP_DELAY < currentTimeMillis) {
 			changed = true;
-			++animationStep;
 			lastAnimationStepTime = currentTimeMillis;
 		}
 		return changed;
@@ -1983,7 +2000,7 @@ public abstract class Desktop extends JDesktopPane {
 		return color;
 	}
 
-	private long animationStep = 0;
+	private double animationStep = 0;
 	long lastAnimationStepTime = 0;
 	final long STEP_DELAY = 50;
 
@@ -1997,7 +2014,7 @@ public abstract class Desktop extends JDesktopPane {
 			if (inClosure) {
 				final int LENGTH = 16;
 				g2d.setStroke(new BasicStroke(stroke.getLineWidth(), stroke.getEndCap(), stroke.getLineJoin(), stroke.getMiterLimit(), new float[] { 11f, 5f },
-						(inClosureRootPath ^ isToParentLink)? animationStep % LENGTH : (LENGTH - animationStep % LENGTH)));
+						(float) ((inClosureRootPath ^ isToParentLink)? animationStep % LENGTH : (LENGTH - animationStep % LENGTH))));
 			} else {
 				g2d.setStroke(dotted ? new BasicStroke(stroke.getLineWidth(), stroke.getEndCap(), stroke.getLineJoin(), stroke.getMiterLimit(), new float[] { 2f, 6f },
 						1.0f) : stroke);
@@ -2351,7 +2368,15 @@ public abstract class Desktop extends JDesktopPane {
 	private final DataBrowser parentFrame;
 
 	public static enum LayoutMode {
-		THUMBNAIL(0.22), TINY(0.57), SMALL(0.75), MEDIUM(1.0), LARGE(1.4);
+		THUMBNAIL(0.22),
+		TINY(0.57), 
+		L2(0.66),
+		SMALL(0.75), 
+		L3(0.87),
+		MEDIUM(1.0), 
+		L6(1.13),
+		L7(1.26),
+		LARGE(1.4);
 
 		public final double factor;
 
@@ -2483,7 +2508,7 @@ public abstract class Desktop extends JDesktopPane {
 			int h = (int) (BROWSERTABLE_DEFAULT_HEIGHT * layoutMode.factor);
 			Rectangle r = new Rectangle(x, y, (int) (BROWSERTABLE_DEFAULT_WIDTH * layoutMode.factor), h);
 			// iFrame.setBounds(r);
-			desktopAnimation.setIFrameBounds(iFrame, root.getUserObject().browserContentPane, r);
+			desktopAnimation.setIFrameBounds(iFrame, root.getUserObject().browserContentPane, r, false);
 		}
 		for (Node<RowBrowser> child : root.getChildren()) {
 			arrangeNodes(child);
@@ -2503,7 +2528,6 @@ public abstract class Desktop extends JDesktopPane {
 
 		try {
 			UIUtil.setWaitCursor(this);
-			
 			this.layoutMode = layoutMode;
 			Map<Rectangle, double[]> newPrecBounds = new HashMap<Rectangle, double[]>();
 			for (RowBrowser rb : new ArrayList<RowBrowser>(tableBrowsers)) {
@@ -2523,18 +2547,16 @@ public abstract class Desktop extends JDesktopPane {
 					pBounds = new double[] { pBounds[0] * scale, pBounds[1] * scale, pBounds[2] * scale, pBounds[3] * scale };
 				}
 				newBounds = new Rectangle((int) pBounds[0], (int) pBounds[1], (int) pBounds[2], (int) pBounds[3]);
-				desktopAnimation.setIFrameBoundsImmediately(rb.internalFrame, rb.browserContentPane, newBounds);
-				// rb.internalFrame.setBounds(newBounds);
-				// rb.browserContentPane.adjustRowTableColumnsWidth();
-				rb.browserContentPane.sortColumnsCheckBox.setVisible(!LayoutMode.TINY.equals(layoutMode));
+				desktopAnimation.setIFrameBounds(rb.internalFrame, rb.browserContentPane, newBounds, true);
+				rb.browserContentPane.sortColumnsPanel.setVisible(!LayoutMode.TINY.equals(layoutMode) && !LayoutMode.THUMBNAIL.equals(layoutMode));
 				newPrecBounds.put(newBounds, pBounds);
 			}
 			precBounds = newPrecBounds;
 			manager.resizeDesktop();
-	
+
 			Rectangle vr = new Rectangle(Math.max(0, (int) (fixed.x * scale - getVisibleRect().width / 2)), Math.max(0,
 					(int) (fixed.y * scale - getVisibleRect().height / 2)), getVisibleRect().width, getVisibleRect().height);
-			desktopAnimation.scrollRectToVisibleImmediately(vr);
+			desktopAnimation.scrollRectToVisible(vr, true);
 			updateMenu(layoutMode);
 			adjustClosure(null, null);
 		} finally {
@@ -2678,6 +2700,9 @@ public abstract class Desktop extends JDesktopPane {
 			storeSession(filename);
 			
 			DataModel newModel = new DataModel(schemamapping, executionContext, false);
+			if (datamodel != null) {
+				UISettings.s1 = Math.max(UISettings.s1, newModel.getTables().size());
+			}
 			datamodel.set(newModel);
 			
 			onNewDataModel();
@@ -2708,7 +2733,8 @@ public abstract class Desktop extends JDesktopPane {
 	public abstract void openSchemaAnalyzer();
 	public abstract void onNewDataModel();
 	public abstract void onLayoutChanged(boolean isLayouted, boolean scrollToCenter);
-
+	public abstract void updateBookmarksMenu();
+	
 	public void openSchemaMappingDialog(boolean silent) {
 		try {
 			Map<String, String> mapping = schemaMapping;
@@ -2781,28 +2807,58 @@ public abstract class Desktop extends JDesktopPane {
 	/**
 	 * Stores browser session.
 	 */
-	public void storeSession() {
+	public void storeSession(BookmarksPanel bookmarksPanel) {
 		String fnProp = null;
+		int propLen = 0;
+		final String INVALID_CHARS = "['`\"/\\\\\\~]+";
 		for (RowBrowser rb : tableBrowsers) {
-			if (fnProp == null && rb.parent == null && rb.browserContentPane.table != null) {
+			if (rb.browserContentPane.table != null) {
 				if (!(rb.browserContentPane.table instanceof BrowserContentPane.SqlStatementTable)) {
-					fnProp = datamodel.get().getDisplayName(rb.browserContentPane.table).replace(' ', '-').replace('\"', '-').replace('\'', '-')
-							.replace('(', '-').replace(')', '-').toLowerCase()
-							+ ".dbl";
+					int l = 1;
+					RowBrowser parent;
+					for (parent = rb; parent.parent != null; parent = parent.parent) {
+						++l;
+					}
+					String prop = datamodel.get().getDisplayName(parent.browserContentPane.table).replaceAll(INVALID_CHARS, " ").trim();
+					if (parent != rb) {
+						prop += " - " + datamodel.get().getDisplayName(rb.browserContentPane.table).replaceAll(INVALID_CHARS, " ").trim();
+					}
+					if (l > propLen || fnProp == null || l == propLen && fnProp.compareTo(prop) < 0) {
+						fnProp = prop;
+						propLen = l;
+					}
 				}
 			}
 		}
 
-		if (currentSessionFileName != null) {
-			fnProp = currentSessionFileName;
+		if (fnProp != null && bookmarksPanel == null) {
+			fnProp += ".dbl";
 		}
 
-		File startDir = Environment.newFile("layout");
-		Component pFrame = SwingUtilities.getWindowAncestor(this);
-		if (pFrame == null) {
-			pFrame = this;
+		if (bookmarksPanel == null) {
+			if (currentSessionFileName != null) {
+				fnProp = currentSessionFileName;
+			}
 		}
-		String sFile = UIUtil.choseFile(fnProp == null ? null : new File(startDir, fnProp), startDir.getPath(), "Store Layout", ".dbl", pFrame, true, false);
+
+		String sFile;
+		
+		if (bookmarksPanel != null) {
+			File startDir = bookmarksPanel.getBookmarksFolder();
+			sFile = bookmarksPanel.newBookmark(fnProp);
+			if (sFile != null) {
+				File f = new File(startDir, sFile + ".dbl");
+				startDir.mkdirs();
+				sFile = f.getAbsolutePath();
+			}
+		} else {
+			File startDir = Environment.newFile("layout");
+			Component pFrame = SwingUtilities.getWindowAncestor(this);
+			if (pFrame == null) {
+				pFrame = this;
+			}
+			sFile = UIUtil.choseFile(fnProp == null ? null : new File(startDir, fnProp), startDir.getPath(), "Store Layout", ".dbl", pFrame, true, false);
+		}
 
 		if (sFile != null) {
 			try {
@@ -2810,7 +2866,18 @@ public abstract class Desktop extends JDesktopPane {
 			} catch (Throwable e) {
 				UIUtil.showException(this, "Error", e, session);
 			}
-			currentSessionFileName = sFile;
+			if (bookmarksPanel == null) {
+				currentSessionFileName = sFile;
+			} else {
+				bookmarksPanel.updateBookmarksMenu();
+				updateAllBookmarkMenues();
+			}
+		}
+	}
+
+	public void updateAllBookmarkMenues() {
+		for (Desktop dTop: desktops) {
+			dTop.updateBookmarksMenu();
 		}
 	}
 
@@ -2853,7 +2920,7 @@ public abstract class Desktop extends JDesktopPane {
 				}
 			}
 
-			csv += where + "; ";
+			csv += CsvFile.encodeCell(where) + "; ";
 
 			csv += rb.internalFrame.getLocation().x + "; " + rb.internalFrame.getLocation().y + "; ";
 			csv += rb.internalFrame.getSize().width + "; " + rb.internalFrame.getSize().height + "; ";
@@ -2875,14 +2942,15 @@ public abstract class Desktop extends JDesktopPane {
 
 	/**
 	 * Restores browser session.
+	 * @param bookMarkFile 
 	 */
-	public void restoreSession(RowBrowser toBeAppended) {
+	public void restoreSession(RowBrowser toBeAppended, File bookMarkFile) {
 		File startDir = Environment.newFile("layout");
 		Component pFrame = SwingUtilities.getWindowAncestor(this);
 		if (pFrame == null) {
 			pFrame = this;
 		}
-		String sFile = UIUtil.choseFile(null, startDir.getPath(), toBeAppended == null ? "Restore Layout" : "Append Layout", ".dbl", pFrame, true, true);
+		String sFile = bookMarkFile != null? bookMarkFile.getAbsolutePath() : UIUtil.choseFile(null, startDir.getPath(), toBeAppended == null ? "Restore Layout" : "Append Layout", ".dbl", pFrame, true, true);
 		
 		if (sFile != null) {
 			try {
@@ -3039,7 +3107,7 @@ public abstract class Desktop extends JDesktopPane {
 			}
 			this.scrollToCenter(root.internalFrame);
 		} else {
-			this.desktopAnimation.scrollRectToVisible(new Rectangle(0, 0, 1, 1));
+			this.desktopAnimation.scrollRectToVisible(new Rectangle(0, 0, 1, 1), false);
 		}
 	}
 
@@ -3238,7 +3306,8 @@ public abstract class Desktop extends JDesktopPane {
 	protected abstract SQLConsole getSqlConsole(boolean switchToConsole);
 	protected abstract boolean isDesktopVisible();
 	protected abstract void checkAnchorRetension();
-
+	protected abstract void changeColumnOrder(Table table);
+	
 	/**
 	 * Scrolls an iFrame to the center of the desktop.
 	 */
@@ -3259,7 +3328,7 @@ public abstract class Desktop extends JDesktopPane {
 		}
 		Rectangle r = new Rectangle(x, y, Math.max(1, w), Math.max(1, h));
 		Rectangle vr = new Rectangle(postAnimationDesktopnSize != null? postAnimationDesktopnSize : currentDesktopnSize == null? getScrollPane().getViewport().getPreferredSize() : currentDesktopnSize);
-		desktopAnimation.scrollRectToVisible(r.intersection(vr));
+		desktopAnimation.scrollRectToVisible(r.intersection(vr), false);
 	}
 
 	/**
@@ -3376,6 +3445,16 @@ public abstract class Desktop extends JDesktopPane {
 		rescaleFactorHasChanged = false;
 	}
 
+	private boolean animationEnabled = true;
+	
+	public boolean isAnimationEnabled() {
+		return animationEnabled;
+	}
+
+	public void setAnimationEnabled(boolean animationEnabled) {
+		this.animationEnabled = animationEnabled;
+	}
+	
 	/**
 	 * Maximum number of concurrent DB connections.
 	 */

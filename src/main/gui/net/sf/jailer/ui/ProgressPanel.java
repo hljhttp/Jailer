@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2018 the original author or authors.
+ * Copyright 2007 - 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -107,7 +107,7 @@ public class ProgressPanel extends javax.swing.JPanel {
 //            gridBagConstraints.insets = new Insets(2, 0, 2, 0);
 			rowsPerTablePanel.add(l, gridBagConstraints);
 
-			l = new JLabel("" + rowsPerTable.get(tableName) + "  ");
+			l = new JLabel("" + UIUtil.format(rowsPerTable.get(tableName)) + "  ");
 			if (y % 2 == 0) {
 				l.setBackground(new java.awt.Color(240, 255, 255));
 			} else {
@@ -463,7 +463,7 @@ public class ProgressPanel extends javax.swing.JPanel {
 
 	public void confirm() {
 		String message;
-		message = "Successfully finished.";
+		message = "Successfully completed.";
 		if (DMLTransformer.numberOfExportedLOBs > 0) {
 			message += "\n" + DMLTransformer.numberOfExportedLOBs + " CLOBs/BLOBs exported.\n\n" +
 					   "Note that the CLOBs/BLOBs can only\n" +
@@ -471,6 +471,14 @@ public class ProgressPanel extends javax.swing.JPanel {
 		}
 		JOptionPane.showMessageDialog(this, message, "Finished", JOptionPane.INFORMATION_MESSAGE);
 	}
+	
+	public void onCancel() {
+		inCancellingStep = true;
+		stepLabel.setText("cancelling...");
+		stepLabel.setForeground(Color.RED);
+    }
+
+	public boolean inCancellingStep = false;
 	
 	// 
 	// obsolete

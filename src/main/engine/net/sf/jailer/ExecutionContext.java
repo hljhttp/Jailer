@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2018 the original author or authors.
+ * Copyright 2007 - 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,8 +18,10 @@ package net.sf.jailer;
 import java.io.File;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.sql.Connection;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 
 import net.sf.jailer.configuration.DBMS;
@@ -72,11 +74,18 @@ public class ExecutionContext {
 		this.workingTableSchema = other.workingTableSchema;
 		this.datamodelFolder = other.datamodelFolder;
 		this.noSorting = other.noSorting;
+		this.orderByPK = other.orderByPK;
 		this.transactional = other.transactional;
+		this.isolationLevel = other.isolationLevel;
 		this.noRowid = other.noRowid;
 		this.importFilterMappingTableSchema = other.importFilterMappingTableSchema;
 		this.scope = other.scope;
 		this.rawparameters = other.rawparameters;
+		this.embedded = other.embedded;
+		this.checkPrimaryKeys = other.checkPrimaryKeys;
+		this.insertIncrementally = other.insertIncrementally;
+		this.independentWorkingTables = other.independentWorkingTables;
+		this.upkDomain = other.upkDomain;
 // don't share progressListenerRegistry, was: this.progressListenerRegistry = other.progressListenerRegistry;
 	}
 
@@ -444,6 +453,20 @@ public class ExecutionContext {
 	}
 
 	/**
+	 * If <code>true</code>, the exported rows will be ordered according to the primary key.
+	 */
+	public boolean getOrderByPK() {
+		return orderByPK;
+	}
+
+	/**
+	 * @param orderByPK if <code>true</code>, the exported rows will be ordered according to the primary key
+	 */
+	public void setOrderByPK(boolean orderByPK) {
+		this.orderByPK = orderByPK;
+	}
+
+	/**
 	 * If <code>true</code>, Import rows in a single transaction
 	 *
 	 * @return <code>true</code> if Import rows in a single transaction
@@ -460,6 +483,24 @@ public class ExecutionContext {
 	 */
 	public void setTransactional(boolean transactional) {
 		this.transactional = transactional;
+	}
+
+	/**
+	 * Gets IsolationLevel.
+	 * 
+	 * @see Connection#setTransactionIsolation(int)
+	 */
+	public Integer getIsolationLevel() {
+		return isolationLevel;
+	}
+
+	/**
+	 * Sets IsolationLevel.
+	 * 
+	 * @see Connection#setTransactionIsolation(int)
+	 */
+	public void setIsolationLevel(Integer isolationLevel) {
+		this.isolationLevel = isolationLevel;
 	}
 
 	/**
@@ -503,6 +544,36 @@ public class ExecutionContext {
 	 */
 	public void setImportFilterMappingTableSchema(String importFilterMappingTableSchema) {
 		this.importFilterMappingTableSchema = importFilterMappingTableSchema;
+	}
+
+	/**
+	 * If <code>true</code>, collects the rows using multiple insert operations with a limited number of rows per operation. <br>
+	 * Use this option if otherwise the transactions become too big.
+	 */
+	public boolean isInsertIncrementally() {
+		return insertIncrementally;
+	}
+
+	/**
+	 * If <code>true</code>, collects the rows using multiple insert operations with a limited number of rows per operation. <br>
+	 * Use this option if otherwise the transactions become too big.
+	 */
+	public void setInsertIncrementally(boolean insertIncrementally) {
+		this.insertIncrementally = insertIncrementally;
+	}
+
+	/**
+	 * Is the subsetter embedded into an application?
+	 */
+	public boolean isEmbedded() {
+		return embedded;
+	}
+
+	/**
+	 * @param embedded is the subsetter embedded into an application?
+	 */
+	public void setEmbedded(boolean embedded) {
+		this.embedded = embedded;
 	}
 
 	/**
@@ -741,18 +812,36 @@ public class ExecutionContext {
 	// the exported rows will not be sorted according to foreign key constraints
 	private boolean noSorting = false;
 
+	// orders the exported rows according to the primary key
+	private boolean orderByPK = false;
+
 	// import rows in a single transaction
 	private boolean transactional = false;
-
+	
+	// isolation level
+	private Integer isolationLevel = null;
+	
 	// use primary keys to determine row identity (instead of rowid-column)
 	private boolean noRowid = false;
+
+	// Should the PKs be checked for validity?
+	private boolean checkPrimaryKeys = false;
+	
+	// collects the rows using multiple insert operations with a limited number of rows per operation
+	private boolean insertIncrementally = false;
 
 	// schema in which the import-filter mapping tables will be created
 	private String importFilterMappingTableSchema = "";
 
+	// create working tables that are independent of the extraction model. (Potentially less efficient)
+	private boolean independentWorkingTables = false;
+	
 	private WorkingTableScope scope = WorkingTableScope.GLOBAL;
 
 	private String rawparameters;
+	
+	private boolean embedded = false;
+	private Set<String> upkDomain;
 	
 	private ProgressListenerRegistry progressListenerRegistry = new ProgressListenerRegistry();
 
@@ -773,6 +862,42 @@ public class ExecutionContext {
 
 	public void setLayoutStorage(LayoutStorage layoutStorage) {
 		this.layoutStorage = layoutStorage;
+	}
+
+	/**
+	 * Should the PKs be checked for validity?
+	 */
+	public boolean getCheckPrimaryKeys() {
+		return checkPrimaryKeys;
+	}
+	
+	/**
+	 * Should the PKs be checked for validity?
+	 */
+	public void setCheckPrimaryKeys(boolean checkPrimaryKeys) {
+		this.checkPrimaryKeys = checkPrimaryKeys;
+	}
+	
+	/**
+	 * Create working tables that are independent of the extraction model. (Potentially less efficient)
+	 */
+	public boolean isIndependentWorkingTables() {
+		return independentWorkingTables;
+	}
+
+	/**
+	 * Create working tables that are independent of the extraction model. (Potentially less efficient)
+	 */
+	public void setIndependentWorkingTables(boolean independentWorkingTables) {
+		this.independentWorkingTables = independentWorkingTables;
+	}
+
+	public Set<String> getUpkDomain() {
+		return upkDomain;
+	}
+
+	public void setUpkDomain(Set<String> upkDomain) {
+		this.upkDomain = upkDomain;
 	}
 
 	private void copyCommandLineFields(CommandLine commandLine) {
@@ -806,9 +931,14 @@ public class ExecutionContext {
 		workingTableSchema = commandLine.workingTableSchema;
 		datamodelFolder = commandLine.datamodelFolder;
 		noSorting = commandLine.noSorting;
+		orderByPK = commandLine.orderByPK;
+		independentWorkingTables = commandLine.independentWorkingTables;
 		transactional = commandLine.transactional;
+		isolationLevel = commandLine.isolationLevel;
 		noRowid = commandLine.noRowid;
 		importFilterMappingTableSchema = commandLine.importFilterMappingTableSchema;
+		checkPrimaryKeys = commandLine.checkPrimaryKeys;
+		insertIncrementally = commandLine.insertIncrementally;
 	}
 
 	private Map<String, String> copy(Map<String, String> map) {

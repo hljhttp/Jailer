@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2018 the original author or authors.
+ * Copyright 2007 - 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -41,12 +42,12 @@ public class CycleFinder {
 	 * Concatenation of two paths left/right or an edge, if left and right is null.
 	 */
 	public static class Path {
-		final Table from;
+		public final Table from;
 		final Table to;
 		final Path left;
 		final Path right;
 		final int birthday;
-		final int length;
+		public final int length;
 		
 		Path(Table from, Table to, Path left, Path right, int birthday) {
 			this.from = from;
@@ -75,7 +76,7 @@ public class CycleFinder {
 		
 		@Override
 		public int hashCode() {
-			return 1;
+			return from.hashCode() + 7 * to.hashCode() + 11 * length;
 		}
 		
 		public void fillPath(List<Table> path) {
@@ -108,61 +109,86 @@ public class CycleFinder {
 	}
 	
 	/**
+	 * Consumes cycles.
+	 */
+	public interface CycleConsumer {
+		
+		/**
+		 * Consumes a cycle
+		 * 
+		 * @param cycle a cyclic path
+		 * @return <code>false</code> to stop searching
+		 */
+		boolean consume(Path cycle);
+	}
+	
+	/**
 	 * Finds all dependency cycles in a data model.
 	 * 
 	 * @param dataModel the data model
+	 * @param cycleConsumer consumes cycles (optional)
+	 * 
 	 * @return all cycles in the data model
 	 */
-	public static Collection<Path> findCycle(DataModel dataModel, Collection<Table> tables) {
-		Collection<Path> allCycles = new ArrayList<Path>();
+	public static Collection<Path> findCycle(DataModel dataModel, Collection<Table> tables, boolean findExact, Long timeout, CycleConsumer cycleConsumer) {
+		Collection<Path> allCycles = new LinkedHashSet<Path>();
 		Set<Pair<Table, Table>> tabu = new HashSet<Pair<Table,Table>>();
-		
-		for (;;) {
-			tables = getCycle(tables, tabu);
-			Map<Table, List<Path>> fromToPaths = new TreeMap<Table, List<Path>>();
-			for (Table table: tables) {
-				List<Path> pathList = new ArrayList<Path>(10);
-				fromToPaths.put(table, pathList);
-			}
-			for (Table table: tables) {
-				for (Association association: table.associations) {
-					// if (!association.isIgnored()) {
-						if (association.isInsertDestinationBeforeSource()) {
-							if (tables.contains(association.destination)) {
-								Path path = new Path(association.source, association.destination, null, null, 0);
-								fromToPaths.get(path.from).add(path);
+		Set<Set<Table>> knownCycleSets = new HashSet<Set<Table>>();
+		long startTime = System.currentTimeMillis();
+		final int MAX_ITERATIONS = 100;
+		boolean exhaused = false;
+
+		try {
+			for (int cd = 0; cd < MAX_ITERATIONS; ++cd) {
+				tables = getCycle(tables, tabu);
+				Map<Table, List<Path>> fromToPaths = new TreeMap<Table, List<Path>>();
+				for (Table table: tables) {
+					List<Path> pathList = new ArrayList<Path>(10);
+					fromToPaths.put(table, pathList);
+				}
+				for (Table table: tables) {
+					for (Association association: table.associations) {
+						 if (!association.isIgnored()) {
+							if (association.isInsertDestinationBeforeSource()) {
+								if (tables.contains(association.destination)) {
+									Path path = new Path(association.source, association.destination, null, null, 0);
+									fromToPaths.get(path.from).add(path);
+								}
 							}
 						}
-	//				}
+					}
 				}
-			}
-			List<Path> newPaths = new ArrayList<Path>();
-			Set<Table> tSet = new TreeSet<Table>();
-			for (int today = 1; ; ++today) {
-				newPaths.clear();
-				int yesterday = today - 1;
-				
-				for (Map.Entry<Table, List<Path>> e: fromToPaths.entrySet()) {
-					for (Path path: e.getValue()) {
-						CancellationHandler.checkForCancellation(null);
-						if (path.from != path.to) {
-							List<Path> list = fromToPaths.get(path.to);
-							if (list != null) {
-								for (Path toAppend: list) {
-									if (toAppend.from != toAppend.to) {
-										if (toAppend.birthday == yesterday) {
-											Path newPath = new Path(path.from, toAppend.to, path, toAppend, today);
-											if (!fromToPaths.get(newPath.from).contains(newPath)) {
-												int aSize;
-												if (newPath.from == newPath.to) {
-													aSize = newPath.length;
-												} else {
-													aSize = newPath.length + 1;
-												}
-												tSet.clear();
-												newPath.fillSet(tSet);
-												if (tSet.size() == aSize) {
-													newPaths.add(newPath);
+				List<Path> newPaths = new ArrayList<Path>();
+				Set<Table> tSet = new TreeSet<Table>();
+				for (int today = 1; ; ++today) {
+					newPaths.clear();
+					int yesterday = today - 1;
+					
+					for (Map.Entry<Table, List<Path>> e: fromToPaths.entrySet()) {
+						for (Path path: e.getValue()) {
+							CancellationHandler.checkForCancellation(null);
+							if (timeout != null && System.currentTimeMillis() > startTime + timeout) {
+								return allCycles;
+							}
+							if (path.from != path.to) {
+								List<Path> list = fromToPaths.get(path.to);
+								if (list != null) {
+									for (Path toAppend: list) {
+										if (toAppend.from != toAppend.to) {
+											if (toAppend.birthday == yesterday) {
+												Path newPath = new Path(path.from, toAppend.to, path, toAppend, today);
+												if (!fromToPaths.get(newPath.from).contains(newPath)) {
+													int aSize;
+													if (newPath.from == newPath.to) {
+														aSize = newPath.length;
+													} else {
+														aSize = newPath.length + 1;
+													}
+													tSet.clear();
+													newPath.fillSet(tSet);
+													if (tSet.size() == aSize) {
+														newPaths.add(newPath);
+													}
 												}
 											}
 										}
@@ -171,19 +197,27 @@ public class CycleFinder {
 							}
 						}
 					}
-				}
-				if (newPaths.isEmpty()) {
-					break;
-				} else {
-					for (Path path: newPaths) {
-						fromToPaths.get(path.from).add(path);
+					if (newPaths.isEmpty()) {
+						exhaused = true;
+						break;
+					} else {
+						for (Path path: newPaths) {
+							fromToPaths.get(path.from).add(path);
+						}
 					}
-				}
-				boolean cycFound = false;
-				for (List<Path> pList: fromToPaths.values()) {
-					for (Path path: pList) {
-						if (path.from == path.to) {
-							cycFound = true;
+					boolean cycFound = false;
+					for (List<Path> pList: fromToPaths.values()) {
+						for (Path path: pList) {
+							if (path.from == path.to) {
+								Set<Table> taSet = new TreeSet<Table>();
+								path.fillSet(taSet);
+								if (!knownCycleSets.contains(taSet)) {
+									cycFound = true;
+									break;
+								}
+							}
+						}
+						if (cycFound) {
 							break;
 						}
 					}
@@ -191,35 +225,51 @@ public class CycleFinder {
 						break;
 					}
 				}
-				if (cycFound) {
+				
+				Map<Set<Table>, Path> cycles = new HashMap<Set<Table>, Path>();
+				for (List<Path> pList: fromToPaths.values()) {
+					CancellationHandler.checkForCancellation(null);
+					if (timeout != null && System.currentTimeMillis() > startTime + timeout) {
+						return allCycles;
+					}
+					for (Path path: pList) {
+						if (path.from == path.to) {
+							List<Table> pl = new ArrayList<Table>();
+							path.fillPath(pl);
+							if (!findExact) {
+								for (int i = 0; i < pl.size(); ++i) {
+									tabu.add(new Pair<Table, Table>(pl.get(i), pl.get((i + 1) % pl.size())));
+								}
+							}
+							Set<Table> taSet = new TreeSet<Table>();
+							path.fillSet(taSet);
+							knownCycleSets.add(taSet);
+							cycles.put(taSet, path);
+						}
+					}
+				}
+				boolean newCycleFound = false;
+				for (Path cycle: cycles.values()) {
+					if (allCycles.add(cycle)) {
+						newCycleFound = true;
+						if (cycleConsumer != null) {
+							if (!cycleConsumer.consume(cycle)) {
+								newCycleFound = false;
+								break;
+							}
+						}
+					}
+				}
+				if (!newCycleFound || exhaused) {
 					break;
 				}
 			}
-			
-			Map<Set<Table>, Path> cycles = new HashMap<Set<Table>, Path>();
-			for (List<Path> pList: fromToPaths.values()) {
-				CancellationHandler.checkForCancellation(null);
-				for (Path path: pList) {
-					if (path.from == path.to) {
-						List<Table> pl = new ArrayList<Table>();
-						path.fillPath(pl);
-						for (int i = 0; i < pl.size(); ++i) {
-							tabu.add(new Pair<Table, Table>(pl.get(i), pl.get((i + 1) % pl.size())));
-						}
-						Set<Table> taSet = new TreeSet<Table>();
-						path.fillSet(taSet);
-						cycles.put(taSet, path);
-					}
-				}
-			}
-			allCycles.addAll(cycles.values());
-			if (cycles.isEmpty()) {
-				break;
-			}
+		} catch (OutOfMemoryError oom) {
+			// stop
 		}
 		return allCycles;
 	}
-	
+
 	/**
 	 * Gets set of all tables involved in a cycle.
 	 * 

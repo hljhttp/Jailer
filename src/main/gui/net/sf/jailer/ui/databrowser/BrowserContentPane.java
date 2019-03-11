@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2018 the original author or authors.
+ * Copyright 2007 - 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -124,6 +124,7 @@ import javax.swing.tree.DefaultTreeModel;
 import net.coderazzi.filters.gui.AutoChoices;
 import net.coderazzi.filters.gui.TableFilterHeader;
 import net.sf.jailer.ExecutionContext;
+import net.sf.jailer.configuration.Configuration;
 import net.sf.jailer.database.InlineViewStyle;
 import net.sf.jailer.database.Session;
 import net.sf.jailer.database.Session.AbstractResultSetReader;
@@ -186,6 +187,7 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
 		private boolean finished;
 		private final ResultSet inputResultSet;
 		private final RowBrowser parentBrowser;
+		private Session theSession;
 		public boolean closureLimitExceeded = false;
 		
 		public LoadJob(int limit, String andCond, RowBrowser parentBrowser, boolean selectDistinct) {
@@ -216,6 +218,7 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
 		public void run() {
 			int l;
 			synchronized (this) {
+				theSession = session;
 				l = limit;
 				if (isCanceled) {
 					CancellationHandler.reset(this);
@@ -262,7 +265,11 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
 					if (e != null) {
 						updateMode("error", null);
 						unhide();
-						UIUtil.showException(BrowserContentPane.this, "Error", e);
+						if (theSession == null || !theSession.isDown()) {
+							UIUtil.showException(BrowserContentPane.this, "Error", e);
+						} else {
+							theSession = null;
+						}
 					} else {
 						Set<String> prevIDs = new TreeSet<String>();
 						long prevHash = 0;
@@ -550,7 +557,8 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
 		
 		initComponents();
 		loadingCauseLabel.setVisible(false);
-		
+		sortColumnsCheckBox.setVisible(false);
+
 		andCondition = new JComboBox();
 		andCondition.setEditable(true);
 		GridBagConstraints gridBagConstraints = new java.awt.GridBagConstraints();
@@ -565,6 +573,7 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
 		dropA.setText(null);
 		dropA.setIcon(dropDownIcon);
 		sqlLabel1.setIcon(dropDownIcon);
+		sortColumnsLabel.setIcon(dropDownIcon);
 		dropA.addMouseListener(new java.awt.event.MouseAdapter() {
 			@Override
 			public void mousePressed(java.awt.event.MouseEvent evt) {
@@ -861,8 +870,8 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
 							}
 						} else {
 							Table type = getResultSetTypeForColumn(convertedColumnIndex);
-							if (isEditMode && r != null && browserContentCellEditor.isEditable(type, rowIndex, convertedColumnIndex, r.values[convertedColumnIndex])
-									&& isPKComplete(type, r)) {
+							if (isEditMode && r != null && (r.rowId != null && !r.rowId.isEmpty()) && browserContentCellEditor.isEditable(type, rowIndex, convertedColumnIndex, r.values[convertedColumnIndex])
+									&& isPKComplete(type, r) && !rowIdSupport.getPrimaryKey(type, BrowserContentPane.this.session).getColumns().isEmpty()) {
 								((JLabel) render).setBackground((row % 2 == 0) ? BG1_EM : BG2_EM);
 							} else {
 								((JLabel) render).setBackground((row % 2 == 0) ? BG1 : BG2);
@@ -1127,6 +1136,87 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
 		if (selectDistinct != null) {
 			selectDistinctCheckBox.setSelected(selectDistinct);
 		}
+		sortColumnsPanel.addMouseListener(new java.awt.event.MouseAdapter() {
+			private JPopupMenu popup;
+			private boolean in = false;
+
+			@Override
+			public void mousePressed(MouseEvent e) {
+				loadButton.grabFocus();
+				SwingUtilities.invokeLater(new Runnable() {
+					@Override
+					public void run() {
+						popup = new JPopupMenu();
+						JCheckBoxMenuItem natural = new JCheckBoxMenuItem("Natural column order ");
+						natural.setSelected(!sortColumnsCheckBox.isSelected());
+						natural.addActionListener(new ActionListener() {
+							@Override
+							public void actionPerformed(ActionEvent e) {
+								sortColumnsCheckBox.setSelected(false);
+								sortColumnsCheckBoxActionPerformed(null);
+								sortColumnsLabel.setText("natural order");
+							}
+						});
+						popup.add(natural);
+						JCheckBoxMenuItem sorted = new JCheckBoxMenuItem("Alphabetical column order ");
+						sorted.setSelected(sortColumnsCheckBox.isSelected());
+						sorted.addActionListener(new ActionListener() {
+							@Override
+							public void actionPerformed(ActionEvent e) {
+								sortColumnsCheckBox.setSelected(true);
+								sortColumnsCheckBoxActionPerformed(null);
+								sortColumnsLabel.setText("A-Z order");
+							}
+						});
+						popup.add(sorted);
+						popup.addSeparator();
+						JMenuItem changeOrder = new JMenuItem("Change natural column order ");
+						changeOrder.addActionListener(new ActionListener() {
+							@Override
+							public void actionPerformed(ActionEvent e) {
+								sortColumnsCheckBox.setSelected(false);
+								sortColumnsCheckBoxActionPerformed(null);
+								sortColumnsLabel.setText("natural order");
+								SwingUtilities.invokeLater(new Runnable() {
+									@Override
+									public void run() {
+										changeColumnOrder(table);
+									}
+								});
+							}
+						});
+						popup.add(changeOrder);
+						popup.addPropertyChangeListener("visible", new PropertyChangeListener() {
+							@Override
+							public void propertyChange(PropertyChangeEvent evt) {
+								if (Boolean.FALSE.equals(evt.getNewValue())) {
+									popup = null;
+									updateBorder();
+								}
+							}
+						});
+						UIUtil.showPopup(sortColumnsPanel, 0, sortColumnsPanel.getHeight(), popup);
+					}
+				});
+			}
+
+			@Override
+			public void mouseEntered(java.awt.event.MouseEvent evt) {
+				in = true;
+				updateBorder();
+			}
+
+			@Override
+			public void mouseExited(java.awt.event.MouseEvent evt) {
+				in = false;
+				updateBorder();
+			}
+
+			private void updateBorder() {
+				sortColumnsPanel.setBorder(new javax.swing.border.SoftBevelBorder((in || popup != null) ? javax.swing.border.BevelBorder.LOWERED
+						: javax.swing.border.BevelBorder.RAISED));
+			}
+		});
 		updateTableModel(0, false, false);
 
 		suppressReload = false;
@@ -1594,9 +1684,13 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
 								});
 							}
 						});
+						boolean hasPK = !rowIdSupport.getPrimaryKey(table).getColumns().isEmpty();
+						if (!hasPK) {
+							delete.setEnabled(false);
+						}
 						inserts.setEnabled(rows.size() > 0);
-						updates.setEnabled(rows.size() > 0);
-						deletes.setEnabled(rows.size() > 0);
+						updates.setEnabled(hasPK && rows.size() > 0);
+						deletes.setEnabled(hasPK && rows.size() > 0);
 					}
 				} else {
 					popup.add(sql);
@@ -1607,6 +1701,7 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
 			popup.addSeparator();
 			popup.add(tableFilter);
 			JCheckBoxMenuItem editMode = new JCheckBoxMenuItem("Edit Mode");
+			editMode.setEnabled(isTableEditable(table));
 			if (withKeyStroke) {
 				editMode.setAccelerator(KS_EDIT);
 			}
@@ -1683,9 +1778,10 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
 				public String toString() { return SQLDMLBuilder.buildDelete(table, sortedAndFiltered(rows), session); }});
 			}
 		});
+		boolean hasPK = !rowIdSupport.getPrimaryKey(table).getColumns().isEmpty();
 		insert.setEnabled(rows.size() > 0);
-		update.setEnabled(rows.size() > 0);
-		delete.setEnabled(rows.size() > 0);
+		update.setEnabled(hasPK && rows.size() > 0);
+		delete.setEnabled(hasPK && rows.size() > 0);
 
 		popup.add(new JSeparator());
 		JMenuItem exportData = new JMenuItem("Export Data");
@@ -1772,6 +1868,7 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
 		});
 		popup.add(tableFilter);
 		JCheckBoxMenuItem editMode = new JCheckBoxMenuItem("Edit Mode");
+		editMode.setEnabled(isTableEditable(table));
 		editMode.setAccelerator(KS_EDIT);
 		editMode.setSelected(isEditMode);
 		editMode.addActionListener(new ActionListener() {
@@ -1783,6 +1880,10 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
 		});
 		popup.add(editMode);
 		return popup;
+	}
+
+	protected boolean isTableEditable(Table theTable) {
+		return resultSetType != null || !rowIdSupport.getPrimaryKey(theTable).getColumns().isEmpty();
 	}
 
 	public boolean closeWithChildren(Component parentComponent) {
@@ -1916,7 +2017,6 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
 		try {
 			String file;
 			String ts = new SimpleDateFormat("HH-mm-ss-SSS").format(new Date());
-			File newFile;
 			
 			Table stable = table;
 			String subjectCondition;
@@ -2051,16 +2151,21 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
 //			}
 			subjectCondition = SqlUtil.replaceAliases(subjectCondition, "T", "T");
 			
-			for (int i = 1; ; ++i) {
-				file = Environment.newFile("extractionmodel" + File.separator + "by-example").getPath();
-				newFile = new File(file);
-				newFile.mkdirs();
-				file += File.separator + "SbE-" + (dataModel.getDisplayName(stable).replaceAll("[\"'\\[\\]]", "")) + "-" + ts + (i > 1? "-" + Integer.toString(i) : "") + ".jm";
-				newFile = new File(file);
-				if (!newFile.exists()) {
-					break;
+			if (!doExport) {
+				for (int i = 1; ; ++i) {
+					file = Environment.newFile("extractionmodel" + File.separator + "by-example").getPath();
+					File newFile = new File(file);
+					newFile.mkdirs();
+					file += File.separator + "SbE-" + (dataModel.getDisplayName(stable).replaceAll("['`\"/\\\\\\~]+", "")) + "-" + ts + (i > 1? "-" + Integer.toString(i) : "") + ".jm";
+					newFile = new File(file);
+					if (!newFile.exists()) {
+						break;
+					}
 				}
+			} else {
+				file = Configuration.getInstance().createTempFile().getPath();
 			}
+			
 			Map<String, Map<String, double[]>> positions = new TreeMap<String, Map<String,double[]>>();
 			collectPositions(positions);
 			String currentModelSubfolder = DataModelManager.getCurrentModelSubfolder(executionContext);
@@ -2084,7 +2189,6 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
 				extractionModelFrame.markDirty();
 				extractionModelFrame.expandAll();
 			}
-			newFile.delete();
 		} catch (Throwable e) {
 			UIUtil.showException(this, "Error", e, session);
 		} finally {
@@ -2636,7 +2740,7 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
 			String defaultSchema = JDBCMetaDataBasedModelElementFinder.getDefaultSchema(session, session.getSchema());
 			String schema = quoting.unquote(table.getOriginalSchema(defaultSchema));
 			String tableName = quoting.unquote(table.getUnqualifiedName());
-			ResultSet resultSet = JDBCMetaDataBasedModelElementFinder.getColumns(session, metaData, schema, tableName, "%", false, null);
+			ResultSet resultSet = JDBCMetaDataBasedModelElementFinder.getColumns(session, metaData, schema, tableName, "%", false, false, null);
 			while (resultSet.next()) {
 				String colName = resultSet.getString(4).toLowerCase();
 				columns.add(colName);
@@ -2650,7 +2754,7 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
 					schema = schema.toLowerCase();
 					tableName = tableName.toLowerCase();
 				}
-				resultSet = JDBCMetaDataBasedModelElementFinder.getColumns(session, metaData, schema, tableName, "%", false, null);
+				resultSet = JDBCMetaDataBasedModelElementFinder.getColumns(session, metaData, schema, tableName, "%", false, false, null);
 				while (resultSet.next()) {
 					String colName = resultSet.getString(4).toLowerCase();
 					columns.add(colName);
@@ -3271,10 +3375,28 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
 								o = cellContentConverter.getObject(resultSet, i);
 								if (o instanceof byte[]) {
 									final long length = ((byte[]) o).length;
-									o = new LobValue() {
+									StringBuilder sb = new StringBuilder();
+									int j;
+									for (j = 0; j < length && j < 128; ++j) {
+										byte b = ((byte[]) o)[j];
+										sb.append(" ");
+										sb.append(CellContentConverter.hexChar[(b >> 4) & 15]);
+										sb.append(CellContentConverter.hexChar[b & 15]);
+									}
+									if (j < length) {
+										sb.append("... " + length + " bytes");
+									}
+									final String content = sb.toString();
+									final byte[] finalO = (byte[]) o;
+									o = new BinValue() {
 										@Override
 										public String toString() {
-											return "<Blob> " + length + " bytes";
+											return "<Bin>" + content;
+										}
+
+										@Override
+										public byte[] getContent() {
+											return finalO;
 										}
 									};
 								}
@@ -3287,7 +3409,7 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
 										&& type != Types.NULL && type != Types.OTHER && type != Types.REF && type != Types.SQLXML && type != Types.STRUCT;
 							}
 							if (pkColumnNames.contains(quoting.requote(column.name)) || isPK) {
-								String cVal = cellContentConverter.toSql(o);
+								String cVal = cellContentConverter.toSql(o instanceof BinValue? ((BinValue) o).getContent() : o);
 								String pkValue = "B." + quoting.requote(column.name) + ("null".equalsIgnoreCase(cVal)? " is null" : ("=" + cVal));
 								if (pkColumn != null) {
 									pkColumn.put(column.name, pkValue);
@@ -3462,7 +3584,10 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
 						r = rows.get(row);
 					}
 					Table type = getResultSetTypeForColumn(column);
-					return isEditMode && r != null && browserContentCellEditor.isEditable(type, row, column, r.values[column]) && isPKComplete(type, r);
+					if (isEditMode && r != null && (r.rowId != null && !r.rowId.isEmpty()) && browserContentCellEditor.isEditable(type, row, column, r.values[column]) && isPKComplete(type, r)) {
+						return !rowIdSupport.getPrimaryKey(type, session).getColumns().isEmpty();
+					}
+					return false;
 				}
 
 				@Override
@@ -3858,6 +3983,7 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
 		if (isTableFilterEnabled && !noFilter) {
 			if (filterHeader == null) {
 				filterHeader = new TableFilterHeader();
+				filterHeader.setRowHeightDelta(2);
 				filterHeader.setAutoChoices(AutoChoices.ENABLED);
 				filterHeader.setTable(rowsTable);
 				filterHeader.setMaxVisibleRows(20);
@@ -4002,21 +4128,23 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
 
 	public void adjustRowTableColumnsWidth() {
 		DefaultTableModel dtm = (DefaultTableModel) rowsTable.getModel();
-		int MAXLINES = 2000;
+		int MAXLINES = 400;
 		if (rowsTable.getColumnCount() > 0) {
 			MAXLINES = Math.max(10 * MAXLINES / rowsTable.getColumnCount(), 10);
 		}
 		DefaultTableCellRenderer defaultTableCellRenderer = new DefaultTableCellRenderer();
+		int minTotalWidth = (int) (Desktop.BROWSERTABLE_DEFAULT_WIDTH * getLayoutFactor()) - 18;
+		int totalWidth = 0;
 		for (int i = 0; i < rowsTable.getColumnCount(); i++) {
 			TableColumn column = rowsTable.getColumnModel().getColumn(i);
-			int width = ((int) (Desktop.BROWSERTABLE_DEFAULT_WIDTH * getLayoutFactor()) - 18) / rowsTable.getColumnCount();
+			int width = minTotalWidth / rowsTable.getColumnCount();
 
 			Component comp = defaultTableCellRenderer.getTableCellRendererComponent(rowsTable, column.getHeaderValue(), false, false, 0, i);
 			int pw = comp.getPreferredSize().width;
 			if (pw < 100) {
 				pw = (pw * 110) / 100 + 2;
 			}
-			width = Math.max(width, pw);
+			width = Math.min(Math.max(width, pw), 150);
 
 			int line = 0;
 			for (; line < rowsTable.getRowCount(); ++line) {
@@ -4050,6 +4178,12 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
 			}
 
 			column.setPreferredWidth(width);
+			totalWidth += width;
+			if (i == rowsTable.getColumnCount() - 1) {
+				if (totalWidth < minTotalWidth) {
+					column.setPreferredWidth(width + minTotalWidth - totalWidth);
+				}
+			}
 		}
 	}
 
@@ -4076,6 +4210,8 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
         sortColumnsCheckBox = new javax.swing.JCheckBox();
         rowsCount = new javax.swing.JLabel();
         selectDistinctCheckBox = new javax.swing.JCheckBox();
+        sortColumnsPanel = new javax.swing.JPanel();
+        sortColumnsLabel = new javax.swing.JLabel();
         loadingPanel = new javax.swing.JPanel();
         jPanel1 = new javax.swing.JPanel();
         cancelLoadButton = new javax.swing.JButton();
@@ -4175,7 +4311,19 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
         });
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 2;
+        gridBagConstraints.insets = new java.awt.Insets(0, 0, 0, 4);
         jPanel6.add(selectDistinctCheckBox, gridBagConstraints);
+
+        sortColumnsPanel.setBorder(new javax.swing.border.SoftBevelBorder(javax.swing.border.BevelBorder.RAISED));
+        sortColumnsPanel.setLayout(new javax.swing.BoxLayout(sortColumnsPanel, javax.swing.BoxLayout.LINE_AXIS));
+
+        sortColumnsLabel.setText("  natural order ");
+        sortColumnsPanel.add(sortColumnsLabel);
+
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 4;
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.NORTHEAST;
+        jPanel6.add(sortColumnsPanel, gridBagConstraints);
 
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 1;
@@ -4711,7 +4859,7 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
     }// </editor-fold>//GEN-END:initComponents
 
 		private void cancelLoadButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_cancelLoadButtonActionPerformed
-			cancelLoadJob(false);
+			cancelLoadJob(false); 
 			updateMode("cancelled", null);
 		}//GEN-LAST:event_cancelLoadButtonActionPerformed
 
@@ -4820,6 +4968,8 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
     javax.swing.JScrollPane singleRowViewScrollPane;
     private javax.swing.JPanel singleRowViewScrollPaneContainer;
     public javax.swing.JCheckBox sortColumnsCheckBox;
+    private javax.swing.JLabel sortColumnsLabel;
+    public javax.swing.JPanel sortColumnsPanel;
     private javax.swing.JLabel sqlLabel1;
     javax.swing.JPanel sqlPanel;
     private javax.swing.JPanel tablePanel;
@@ -4848,6 +4998,7 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
 	/**
 	 * Cancels current load job.
 	 * @param propagate 
+	 * @return 
 	 */
 	public void cancelLoadJob(boolean propagate) {
 		LoadJob cLoadJob;
@@ -5023,6 +5174,8 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
 	protected abstract MetaDataSource getMetaDataSource();
 	protected abstract void deselectChildrenIfNeededWithoutReload();
 	protected abstract int getReloadLimit();
+	protected void changeColumnOrder(Table table) {
+	}
 	
 	public interface RunnableWithPriority extends Runnable {
 		int getPriority();

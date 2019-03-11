@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2018 the original author or authors.
+ * Copyright 2007 - 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -473,7 +473,7 @@ public class StringSearchPanel extends javax.swing.JPanel {
 						public void run() {
 							cancelLoading.set(false);
 							for (MDSchema schema: toLoad) {
-								schema.loadTables(false, null);
+								schema.loadTables(false, null, null);
 								setCheckboxState(checkboxPerSchema.get(schema), schema, true, false);
 								while (!schema.isLoaded() && !cancelLoading.get()) {
 									try {
@@ -486,7 +486,7 @@ public class StringSearchPanel extends javax.swing.JPanel {
 									setCheckboxState(checkboxPerSchema.get(schema), schema, false, false);						
 									break;
 								}
-								setCheckboxState(checkboxPerSchema.get(schema), schema, false, true);						
+								setCheckboxState(checkboxPerSchema.get(schema), schema, false, true);
 							}
 							SwingUtilities.invokeLater(new Runnable() {
 								@Override
@@ -504,6 +504,7 @@ public class StringSearchPanel extends javax.swing.JPanel {
 									stateChangeMode.set(true);
 									checkboxPerSchema.get(schema).setSelected(selected);
 									stateChangeMode.set(false);
+									updateTableList();
 								}
 							});
 						}

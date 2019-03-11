@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2018 the original author or authors.
+ * Copyright 2007 - 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -64,6 +64,7 @@ import net.sf.jailer.ui.databrowser.Reference;
 import net.sf.jailer.ui.databrowser.Row;
 import net.sf.jailer.ui.databrowser.sqlconsole.SQLConsole;
 import net.sf.jailer.util.Pair;
+import net.sf.jailer.util.Quoting;
 
 /**
  * Meta Data Details View.
@@ -205,6 +206,23 @@ public abstract class MetaDataDetailsPanel extends javax.swing.JPanel {
 	        gridBagConstraints.anchor = java.awt.GridBagConstraints.WEST;
     		panel.add(analyseButton, gridBagConstraints);
     		tableDetailsPanel.add(panel);
+    		if (tabbedPane.getSelectedIndex() == 0) {
+	    		if (!mdTable.getSchema().isDefaultSchema) {
+	    			boolean dmContainsSchema = false;
+	    			for (Table tab: dataModel.getTables()) {
+	    				String tabSchema = tab.getSchema("");
+	    				if (Quoting.equalsIgnoreQuotingAndCase(mdTable.getSchema().getName(), tabSchema)) {
+	    					dmContainsSchema = true;
+	    					break;
+	    				}
+	    			}
+	    			if (!dmContainsSchema) {
+	    				if (tabbedPane.getTabCount() > 1) {
+	    					tabbedPane.setSelectedIndex(1);
+	    				}
+	    			}
+	    		}
+    		}
     	}
 		tabbedPane.repaint();
     	for (BlockingQueue<Runnable> queue: queues) {
@@ -230,6 +248,8 @@ public abstract class MetaDataDetailsPanel extends javax.swing.JPanel {
 		    		{
 		    			noSingleRowDetailsView = true;
 		    			rowsTableScrollPane.setWheelScrollingEnabled(true);
+		    			sortColumnsCheckBox.setVisible(false);
+		    			sortColumnsPanel.setVisible(false);
 		    		}
 		    		@Override
 		    		protected int getReloadLimit() {
@@ -355,7 +375,7 @@ public abstract class MetaDataDetailsPanel extends javax.swing.JPanel {
 					@Override
 					public void run() {
 						try {
-							pkNames.addAll(mdTable.getPrimaryKeyColumns());
+							pkNames.addAll(mdTable.getPrimaryKeyColumns(false));
 						} catch (SQLException e1) {
 							logger.info("error", e1);
 						}

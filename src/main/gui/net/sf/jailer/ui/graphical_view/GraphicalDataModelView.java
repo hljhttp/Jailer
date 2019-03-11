@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2018 the original author or authors.
+ * Copyright 2007 - 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -43,7 +43,6 @@ import javax.swing.ButtonGroup;
 import javax.swing.JLabel;
 import javax.swing.JMenu;
 import javax.swing.JMenuItem;
-import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
 import javax.swing.JRadioButtonMenuItem;
@@ -60,6 +59,7 @@ import net.sf.jailer.ui.ExtractionModelEditor;
 import net.sf.jailer.ui.QueryBuilderDialog;
 import net.sf.jailer.ui.scrollmenu.JScrollMenu;
 import net.sf.jailer.ui.scrollmenu.JScrollPopupMenu;
+import net.sf.jailer.ui.undo.CompensationAction;
 import prefuse.Display;
 import prefuse.Visualization;
 import prefuse.action.Action;
@@ -70,7 +70,6 @@ import prefuse.action.filter.GraphDistanceFilter;
 import prefuse.action.layout.graph.ForceDirectedLayout;
 import prefuse.activity.Activity;
 import prefuse.controls.Control;
-import prefuse.controls.DragControl;
 import prefuse.controls.FocusControl;
 import prefuse.controls.ToolTipControl;
 import prefuse.controls.WheelZoomControl;
@@ -123,9 +122,9 @@ public class GraphicalDataModelView extends JPanel {
 	public Association selectedAssociation;
 
 	/**
-	 * Set of names of all tables on path from selected one to the root.
+	 * Set of names of all tables on path from selected one to the root. (mapped to the position)
 	 */
-	Set<String> tablesOnPath = new HashSet<String>();
+	Map<String, Integer> tablesOnPath = new HashMap<String, Integer>();
 
 	/**
 	 * Path from selected one to the root.
@@ -181,6 +180,8 @@ public class GraphicalDataModelView extends JPanel {
 	private NBodyForce force;
 	private volatile boolean layoutHasBeenSet = false;
 	private final ExecutionContext executionContext;
+
+	private final ActionList animate;
 	
 	/**
 	 * Constructor.
@@ -309,7 +310,7 @@ public class GraphicalDataModelView extends JPanel {
 		draw.add(new ColorAction(edges, VisualItem.FILLCOLOR, ColorLib.gray(200)));
 		draw.add(new ColorAction(edges, VisualItem.STROKECOLOR, ColorLib.gray(200)));
 		
-		ActionList animate = new ActionList(Activity.INFINITY);
+		animate = new ActionList(Activity.INFINITY);
 		animate.add(fill);
 		animate.add(new RepaintAction());
 		
@@ -330,6 +331,7 @@ public class GraphicalDataModelView extends JPanel {
 		// set up a display to show the visualization
 		
 		display = new Display(visualization);
+		display.setDamageRedraw(false);
 		display.setSize(width, height);
 		display.pan(width / 2, height / 2);
 		display.setForeground(Color.GRAY);
@@ -831,9 +833,7 @@ public class GraphicalDataModelView extends JPanel {
 		restrictAll.addActionListener(new ActionListener () {
 			@Override
 			public void actionPerformed(ActionEvent e) {
-				if (JOptionPane.YES_OPTION == JOptionPane.showConfirmDialog(modelEditor.extractionModelFrame, "Disable each association with '" + model.getDisplayName(table) + "'?\n(except dependencies)?", "Add restrictions", JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE)) {
-					modelEditor.ignoreAll(table);
-				}
+				modelEditor.ignoreAll(table);
 			}
 		});
 		restrictAll.setEnabled(modelEditor.isIgnoreAllApplicable(table));
@@ -842,9 +842,7 @@ public class GraphicalDataModelView extends JPanel {
 		removeRestrictions.addActionListener(new ActionListener () {
 			@Override
 			public void actionPerformed(ActionEvent e) {
-				if (JOptionPane.YES_OPTION == JOptionPane.showConfirmDialog(modelEditor.extractionModelFrame, "Remove all restrictions from associations with '" + model.getDisplayName(table) + "'?", "Remove restrictions", JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE)) {
-					modelEditor.removeAllRestrictions(table);
-				}
+				modelEditor.removeAllRestrictions(table);
 			}
 		});
 		JMenuItem htmlRender = new JMenuItem("Open HTML Render");
@@ -924,10 +922,7 @@ public class GraphicalDataModelView extends JPanel {
 				@Override
 				public void actionPerformed(ActionEvent e) {
 					if (!Boolean.FALSE.equals(table.upsert)) {
-						table.upsert = false;
-						visualization.invalidateAll();
-						display.invalidate();
-						modelEditor.markDirty();
+						changeExportMode(false, table);
 					}
 				}
 			});
@@ -938,10 +933,7 @@ public class GraphicalDataModelView extends JPanel {
 				@Override
 				public void actionPerformed(ActionEvent e) {
 					if (!Boolean.TRUE.equals(table.upsert)) {
-						table.upsert = true;
-						visualization.invalidateAll();
-						display.invalidate();
-						modelEditor.markDirty();
+						changeExportMode(true, table);
 					}
 				}
 			});
@@ -951,10 +943,7 @@ public class GraphicalDataModelView extends JPanel {
 				@Override
 				public void actionPerformed(ActionEvent e) {
 					if (table.upsert != null) {
-						table.upsert = null;
-						visualization.invalidateAll();
-						display.invalidate();
-						modelEditor.markDirty();
+						changeExportMode(null, table);
 					}
 				}
 			});
@@ -982,10 +971,7 @@ public class GraphicalDataModelView extends JPanel {
 				@Override
 				public void actionPerformed(ActionEvent e) {
 					if (!Boolean.TRUE.equals(table.excludeFromDeletion)) {
-						table.excludeFromDeletion = true;
-						visualization.invalidateAll();
-						display.invalidate();
-						modelEditor.markDirty();
+						changeExcludeFromDeletion(true, table);
 					}
 				}
 			});
@@ -996,10 +982,7 @@ public class GraphicalDataModelView extends JPanel {
 				@Override
 				public void actionPerformed(ActionEvent e) {
 					if (!Boolean.FALSE.equals(table.excludeFromDeletion)) {
-						table.excludeFromDeletion = false;
-						visualization.invalidateAll();
-						display.invalidate();
-						modelEditor.markDirty();
+						changeExcludeFromDeletion(false, table);
 					}
 				}
 			});
@@ -1009,10 +992,7 @@ public class GraphicalDataModelView extends JPanel {
 				@Override
 				public void actionPerformed(ActionEvent e) {
 					if (table.excludeFromDeletion != null) {
-						table.excludeFromDeletion = null;
-						visualization.invalidateAll();
-						display.invalidate();
-						modelEditor.markDirty();
+						changeExcludeFromDeletion(null, table);
 					}
 				}
 			});
@@ -1042,6 +1022,38 @@ public class GraphicalDataModelView extends JPanel {
 		}
 		
 		return popup;
+	}
+
+	protected void changeExcludeFromDeletion(Boolean mode, final Table table) {
+		final Boolean old = table.excludeFromDeletion;
+		table.excludeFromDeletion = mode;
+		synchronized (visualization) {
+			visualization.invalidateAll();
+			display.invalidate();
+			modelEditor.markDirty();
+		}
+		modelEditor.getUndoManager().push(new CompensationAction(1, "changed exclude mode (" + (old == null? "Default" : old? "Yes" : "No") + ")", model.getDisplayName(table)) {
+			@Override
+			public void run() {
+				changeExcludeFromDeletion(old, table);
+			}
+		});;
+	}
+
+	private void changeExportMode(Boolean mode, final Table table) {
+		final Boolean old = table.upsert;
+		table.upsert = mode;
+		synchronized (visualization) {
+			visualization.invalidateAll();
+			display.invalidate();
+			modelEditor.markDirty();
+		}
+		modelEditor.getUndoManager().push(new CompensationAction(1, "changed export mode(" + (old == null? "Default" : !old? "Insert" : "Upsert") + ")", model.getDisplayName(table)) {
+			@Override
+			public void run() {
+				changeExportMode(old, table);
+			}
+		});;
 	}
 
 	/**
@@ -1112,7 +1124,9 @@ public class GraphicalDataModelView extends JPanel {
 				executionContext.getLayoutStorage().removeAll(root.getName());
 			}
 		}
-		visualization.reset();
+		synchronized (visualization) {
+			visualization.reset();
+		}
 		layout.cancel();
 	}
 
@@ -1138,13 +1152,15 @@ public class GraphicalDataModelView extends JPanel {
 	private void setGraph(Graph g) {
 		// update graph
 		inInitialization = true;
-		visualization.removeGroup(graph);
-		visualGraph = visualization.addGraph(graph, g);
-		if (visualGraph.getNodeCount() > 1) {
-			VisualItem f = (VisualItem) visualGraph.getNode(1);
-			visualization.getGroup(Visualization.FOCUS_ITEMS).setTuple(f);
-			f.setFixed(true);
-			((VisualItem) visualGraph.getNode(0)).setFixed(true);
+		synchronized (visualization) {
+			visualization.removeGroup(graph);
+			visualGraph = visualization.addGraph(graph, g);
+			if (visualGraph.getNodeCount() > 1) {
+				VisualItem f = (VisualItem) visualGraph.getNode(1);
+				visualization.getGroup(Visualization.FOCUS_ITEMS).setTuple(f);
+				f.setFixed(true);
+				((VisualItem) visualGraph.getNode(0)).setFixed(true);
+			}
 		}
 		
 		inInitialization = false;
@@ -1213,8 +1229,8 @@ public class GraphicalDataModelView extends JPanel {
 						for (int i = 0; i < path.size(); ++i) {
 							if (highlightPath) {
 								associationsOnPath.add(path.get(i));
-								tablesOnPath.add(path.get(i).source.getName());
-								tablesOnPath.add(path.get(i).destination.getName());
+								tablesOnPath.put(path.get(i).source.getName(), i);
+								tablesOnPath.put(path.get(i).destination.getName(), i);
 							}
 							expandTable(theGraph, path.get(i).source, path.get(i), false, null);
 							expandTable(theGraph, path.get(i).destination, path.get(i), false, null);
@@ -1686,6 +1702,7 @@ public class GraphicalDataModelView extends JPanel {
 	 * Extention of {@link ZoomToFitControl}.
 	 */
 	private final class ZoomToFitControlExtension extends ZoomToFitControl {
+
 		private final DataModel model;
 		private final long duration;
 
@@ -1694,6 +1711,17 @@ public class GraphicalDataModelView extends JPanel {
 			super(group, margin, duration, button);
 			this.duration = duration;
 			this.model = model;
+		}
+
+		@Override
+		public void mousePressed(MouseEvent e) {
+			SwingUtilities.invokeLater(new Runnable() {
+				@Override
+				public void run() {
+					modelEditor.exportButton.grabFocus();
+				}
+			});
+			super.mousePressed(e);
 		}
 
 		@Override
@@ -1944,8 +1972,10 @@ public class GraphicalDataModelView extends JPanel {
 		showTableDetails = modelEditor.extractionModelFrame.showTableDetails();
 	//	dragForce.setParameter(DragForce.DRAG_COEFF, showTableDetails? 0.05f : 0.1f);
 		reversedShowDetailsTables.clear();
-		visualization.invalidateAll();
-		visualization.repaint();
+		synchronized (visualization) {
+			visualization.invalidateAll();
+			visualization.repaint();
+		}
 	}
 
 	/**
@@ -1962,11 +1992,11 @@ public class GraphicalDataModelView extends JPanel {
 	
 	public void exportDisplayToImage() throws Exception {
 		Association oldAssociation = selectedAssociation;
-		Set<String> oldTablesOnPath = tablesOnPath;
+		Map<String, Integer> oldTablesOnPath = tablesOnPath;
 		try {
 			synchronized (this) {
 				selectedAssociation = null;
-				tablesOnPath = new HashSet<String>();
+				tablesOnPath = new HashMap<String, Integer>();
 				inImageExport = true;
 			}
 			displayExporter.export(display);
@@ -2056,10 +2086,18 @@ public class GraphicalDataModelView extends JPanel {
 		} else {
 			reversedShowDetailsTables.add(table);
 		}
-		visualization.invalidateAll();
-		display.invalidate();
+		synchronized (visualization) {
+			visualization.invalidateAll();
+			display.invalidate();
+		}
 	}
-
+	
+	public void setAnimationEnabled(boolean enabled) {
+		synchronized (visualization) {
+			animate.setEnabled(enabled);
+		}
+	}
+		
 	private static final long serialVersionUID = -5938101712807557555L;
 
 }

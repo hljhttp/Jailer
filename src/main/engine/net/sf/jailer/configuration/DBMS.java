@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2018 the original author or authors.
+ * Copyright 2007 - 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -125,6 +125,9 @@ public class DBMS {
 		this.packageNamesQuery = other.packageNamesQuery;
 		this.objectRenderers = other.objectRenderers;
 		this.procedureDetailNeedsSpecificName = other.procedureDetailNeedsSpecificName;
+		this.limitTransactionSize = other.limitTransactionSize;
+		this.defaultSchemaQuery = other.defaultSchemaQuery;
+		this.fetchSize = fetchSize;
 	}
 
 	/**
@@ -311,9 +314,15 @@ public class DBMS {
 	private String procedureSourceQuery;
 	private String packageSourceQuery;
 	private String packageNamesQuery;
+	private String defaultSchemaQuery;
+	
+	private Integer fetchSize = null;
+
 	private List<DatabaseObjectRenderingDescription> objectRenderers = new ArrayList<DatabaseObjectRenderingDescription>();
 	private boolean procedureDetailNeedsSpecificName = false;
-	
+
+	private LimitTransactionSizeInfo limitTransactionSize = new LimitTransactionSizeInfo();
+
 	/**
 	 * @return the virtualColumnsQuery
 	 */
@@ -1046,8 +1055,61 @@ public class DBMS {
 		return synonymTableQuery;
 	}
 
+	/**
+	 * Sets query to get underlying table of a synonym.
+	 */
 	public void setSynonymTableQuery(String synonymTableQuery) {
 		this.synonymTableQuery = synonymTableQuery;
+	}
+
+	/**
+	 * Gets query to get default schema of the user.
+	 */
+	public String getDefaultSchemaQuery() {
+		return defaultSchemaQuery;
+	}
+
+	/**
+	 * Sets query to get default schema of the user.
+	 */
+	public void setDefaultSchemaQuery(String defaultSchemaQuery) {
+		this.defaultSchemaQuery = defaultSchemaQuery;
+	}
+
+	/**
+	 * Information about how to to limit transaction size (never <code>null</code>).
+	 */
+	@XmlElement
+	public LimitTransactionSizeInfo getLimitTransactionSize() {
+		if (limitTransactionSize == null) {
+			limitTransactionSize = new LimitTransactionSizeInfo();
+		}
+		return limitTransactionSize;
+	}
+
+	/**
+	 * Information about how to limit transaction size.
+	 */
+	public void setLimitTransactionSize(LimitTransactionSizeInfo incremenalInsertInfo) {
+		this.limitTransactionSize = incremenalInsertInfo;
+	}
+
+	/**
+	 * Gets fetch size.
+	 * 
+	 * @return fetch size
+	 */
+	public Integer getFetchSize() {
+		return fetchSize;
+	}
+
+	/**
+	 * Sets fetch size.
+	 * 
+	 * @param fetchSize fetch size
+	 */
+	public void setFetchSize(Integer fetchSize) {
+		this.fetchSize = fetchSize;
 	}
 
 	/* (non-Javadoc)

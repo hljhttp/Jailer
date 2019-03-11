@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2018 the original author or authors.
+ * Copyright 2007 - 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -55,6 +55,7 @@ import javax.swing.table.TableColumn;
 import org.apache.log4j.Logger;
 
 import net.sf.jailer.ExecutionContext;
+import net.sf.jailer.configuration.DBMS;
 import net.sf.jailer.database.BasicDataSource;
 import net.sf.jailer.database.Session;
 import net.sf.jailer.modelbuilder.JDBCMetaDataBasedModelElementFinder;
@@ -953,9 +954,27 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 		try {
 			BasicDataSource dataSource = new BasicDataSource(ci.driverClass, ci.url, ci.user, ci.password, 0, urls);
 			Window w = parent instanceof Window? (Window) parent : SwingUtilities.getWindowAncestor(parent);
-			SessionForUI session = SessionForUI.createSession(dataSource, dataSource.dbms, w);
+			SessionForUI session = SessionForUI.createSession(dataSource, dataSource.dbms, null, w);
 			if (session != null) {
 				session.shutDown();
+				try {
+					if (!warned) {
+						if (DBMS.forDBMS(null) == dataSource.dbms) {
+							warned = true;
+							final String title = "Unknown DBMS";
+							JOptionPane.showMessageDialog(parent,
+								"Jailer is not configured for DBMS \"" + session.getMetaData().getDatabaseProductName() + "\"\n" +
+								"The results may not be optimal.\nFor assistance please contact:\n" + 
+								"\n" + 
+								"Help desk: https://sourceforge.net/p/jailer/discussion\n" + 
+								"Mail: rwisser@users.sourceforge.net",
+								title, JOptionPane.WARNING_MESSAGE);
+							UIUtil.sendIssue(title, ci.url);
+						}
+					}
+				} catch (Throwable e) {
+					UIUtil.showException(null, "Error", e);
+				}
 				return true;
 			}
 			return false;
@@ -969,6 +988,8 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 		}
 	}
 
+	private static boolean warned = false;
+	
 	/**
 	 * Gets all DB schemas.
 	 * 
@@ -979,7 +1000,7 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 		BasicDataSource dataSource = new BasicDataSource(currentConnection.driverClass,
 				currentConnection.url, currentConnection.user,
 				currentConnection.password, 0, ClasspathUtil.toURLArray(currentConnection.jar1, currentConnection.jar2, currentConnection.jar3, currentConnection.jar4));
-		Session session = new Session(dataSource, dataSource.dbms);
+		Session session = new Session(dataSource, dataSource.dbms, executionContext.getIsolationLevel());
 		List<String> schemas = JDBCMetaDataBasedModelElementFinder.getSchemas(
 				session, currentConnection.user);
 		defaultSchema[0] = JDBCMetaDataBasedModelElementFinder
@@ -1001,7 +1022,7 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 		BasicDataSource dataSource = new BasicDataSource(currentConnection.driverClass,
 				currentConnection.url, currentConnection.user,
 				currentConnection.password, 0, ClasspathUtil.toURLArray(currentConnection.jar1, currentConnection.jar2, currentConnection.jar3, currentConnection.jar4));
-		Session session = new Session(dataSource, dataSource.dbms);
+		Session session = new Session(dataSource, dataSource.dbms, executionContext.getIsolationLevel());
 		List<String> schemas = JDBCMetaDataBasedModelElementFinder.getSchemas(
 				session, currentConnection.user);
 		String defaultSchema = JDBCMetaDataBasedModelElementFinder

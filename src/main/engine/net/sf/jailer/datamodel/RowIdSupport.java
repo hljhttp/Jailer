@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2018 the original author or authors.
+ * Copyright 2007 - 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -102,6 +102,9 @@ public class RowIdSupport {
 	 * @return the primary key of the table
 	 */
 	public PrimaryKey getPrimaryKey(Table table, Session session) {
+		if (table.isArtifical()) {
+			return table.primaryKey;
+		}
 		if (table.primaryKey != null) {
 			if (useRowIds && (!useRowIdsOnlyForTablesWithoutPK || table.primaryKey.getColumns().isEmpty())) {
 				if (session == null || isRowIDApplicable(table, session)) {
@@ -163,6 +166,9 @@ public class RowIdSupport {
 	 */
 	public List<Column> getColumns(Table table, Session session) {
 		List<Column> columns = table.getColumns();
+		if (table.isArtifical()) {
+			return columns;
+		}
 		if (table.primaryKey != null) {
 			if (useRowIds && (!useRowIdsOnlyForTablesWithoutPK || table.primaryKey.getColumns().isEmpty())) {
 				if (session == null || isRowIDApplicable(table, session)) {

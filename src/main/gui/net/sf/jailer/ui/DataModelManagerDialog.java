@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2018 the original author or authors.
+ * Copyright 2007 - 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -896,7 +896,11 @@ public abstract class DataModelManagerDialog extends javax.swing.JFrame {
 		hasSelectedModel = true;
 		setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
 		store();
-		onSelect(null, executionContext);
+		try {
+			onSelect(null, executionContext);
+		} catch (Throwable t) {
+			UIUtil.showException(this, "Error", t);
+		}
 		setCursor(Cursor.getPredefinedCursor(Cursor.DEFAULT_CURSOR));
 		setVisible(false);
 		dispose();

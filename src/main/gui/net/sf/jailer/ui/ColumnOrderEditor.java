@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2018 the original author or authors.
+ * Copyright 2007 - 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,17 +18,20 @@ package net.sf.jailer.ui;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Font;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 import java.io.FileNotFoundException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.concurrent.LinkedBlockingQueue;
 
 import javax.swing.DefaultCellEditor;
+import javax.swing.DefaultComboBoxModel;
 import javax.swing.JCheckBox;
 import javax.swing.JDialog;
 import javax.swing.JFrame;
@@ -62,27 +65,49 @@ public class ColumnOrderEditor extends javax.swing.JPanel {
 	private DefaultTableModel columnOrderModel;
 	private final DataModel dataModel;
 	private JDialog dialog;
+	private Table currentTable;
 	private final ExecutionContext executionContext;
 	private Map<String, DataModel.ColumnOrderPriority> columnOrderPrio;
-
+	private boolean ok = false;
+	
 	private static final String TYPE_PK = "PK";
 	private static final String TYPE_FK = "FK";
 	private static final String TYPE_FK_PK = "FK+PK";
+	private static final String ALL_TABLES = "all tables";
 
     /**
-     * Creates new form ConstraintChecker
-     * @param scriptFile file to load, if not <code>null</code>
+     * Creates new form.
      */
-    public ColumnOrderEditor(JFrame owner, DataModel dataModel, ExecutionContext executionContext) {
+    public ColumnOrderEditor(JFrame owner, Table currentTable, DataModel dataModel, ExecutionContext executionContext) {
         this.dataModel = dataModel;
-    	this.executionContext = executionContext;
+    	this.currentTable = currentTable;
+        this.executionContext = executionContext;
     	
     	initComponents();
         
+    	initTablesCombobox();
+    	
 		Font infoFont = jinfoLabe.getFont();
 		infoFont = new Font(infoFont.getName(), infoFont.getStyle(), (int) (infoFont.getSize() * 1.2));
 		jinfoLabe.setFont(infoFont);
 	
+		columnOrderPrio = new TreeMap<String, DataModel.ColumnOrderPriority>(dataModel.columnOrderPrio);
+		
+		updateTableModel(owner, dataModel);
+        dialog = new EscapableDialog(owner, "Column Ordering") {
+        };
+        dialog.setModal(true);
+		dialog.getContentPane().add(this);
+		dialog.pack();
+		dialog.setSize(550, 600);
+		dialog.setLocation(owner.getX() + (owner.getWidth() - dialog.getWidth()) / 2, Math.max(0, owner.getY() + (owner.getHeight() - dialog.getHeight()) / 2));
+		UIUtil.fit(dialog);
+		okButton.grabFocus();
+
+		dialog.setVisible(true);
+    }
+
+	private void updateTableModel(Component owner, DataModel dataModel) {
 		columnOrderModel = new DefaultTableModel(new String[] { "Column", "Frequency", "Type", "Left/Top", "Right/Bottom" }, 0) {
 			@Override
 			public boolean isCellEditable(int row, int column) {
@@ -100,18 +125,19 @@ public class ColumnOrderEditor extends javax.swing.JPanel {
 					}
 				}
 				super.setValueAt(aValue, row, column);
+				String prefix = currentTable == null? "" : (currentTable.getName() + ".");
 				if (column == 3) {
 					if (Boolean.TRUE.equals(aValue)) {
-						columnOrderPrio.put((String) getValueAt(row, 0), DataModel.ColumnOrderPriority.HI);
+						columnOrderPrio.put(prefix + (String) getValueAt(row, 0), DataModel.ColumnOrderPriority.HI);
 					} else {
-						columnOrderPrio.remove(getValueAt(row, 0));
+						columnOrderPrio.remove(prefix + getValueAt(row, 0));
 					}
 				}
 				if (column == 4) {
 					if (Boolean.TRUE.equals(aValue)) {
-						columnOrderPrio.put((String) getValueAt(row, 0), DataModel.ColumnOrderPriority.LO);
+						columnOrderPrio.put(prefix + (String) getValueAt(row, 0), DataModel.ColumnOrderPriority.LO);
 					} else {
-						columnOrderPrio.remove(getValueAt(row, 0));
+						columnOrderPrio.remove(prefix + getValueAt(row, 0));
 					}
 				}
 			}
@@ -185,26 +211,28 @@ public class ColumnOrderEditor extends javax.swing.JPanel {
 			
 			Map<String, Integer> columnsCount = new TreeMap<String, Integer>();
 			for (Table table: dataModel.getTables()) {
-				for (Column column: table.getColumns()) {
-					String name = Quoting.normalizeIdentifier(column.name);
-					Integer i = columnsCount.get(name);
-					if (i == null) {
-						columnsCount.put(name, 1);
-					} else {
-						columnsCount.put(name, i + 1);
+				if (currentTable == null || currentTable == table) {
+					for (Column column: table.getColumns()) {
+						String name = Quoting.normalizeIdentifier(column.name);
+						Integer i = columnsCount.get(name);
+						if (i == null) {
+							columnsCount.put(name, 1);
+						} else {
+							columnsCount.put(name, i + 1);
+						}
 					}
-				}
-				if (table.primaryKey != null && table.primaryKey.getColumns() != null) {
-					for (Column column: table.primaryKey.getColumns()) {
-						pks.add(Quoting.normalizeIdentifier(column.name));
+					if (table.primaryKey != null && table.primaryKey.getColumns() != null) {
+						for (Column column: table.primaryKey.getColumns()) {
+							pks.add(Quoting.normalizeIdentifier(column.name));
+						}
 					}
-				}
-				for (Association a: table.associations) {
-					if (a.isInsertDestinationBeforeSource()) {
-						Map<Column, Column> mapping = a.createSourceToDestinationKeyMapping();
-						if (mapping != null) {
-							for (Column column: mapping.keySet()) {
-								fks.add(Quoting.normalizeIdentifier(column.name));
+					for (Association a: table.associations) {
+						if (a.isInsertDestinationBeforeSource()) {
+							Map<Column, Column> mapping = a.createSourceToDestinationKeyMapping();
+							if (mapping != null) {
+								for (Column column: mapping.keySet()) {
+									fks.add(Quoting.normalizeIdentifier(column.name));
+								}
 							}
 						}
 					}
@@ -221,11 +249,11 @@ public class ColumnOrderEditor extends javax.swing.JPanel {
 				} else if (pks.contains(e.getKey())) {
 					type = TYPE_PK;
 				}
-				columnOrderModel.addRow(new Object[] { e.getKey(), e.getValue(), type, DataModel.ColumnOrderPriority.HI == dataModel.columnOrderPrio.get(e.getKey()), DataModel.ColumnOrderPriority.LO == dataModel.columnOrderPrio.get(e.getKey()) });
+				String prefix = currentTable == null? "" : (currentTable.getName() + ".");
+				columnOrderModel.addRow(new Object[] { e.getKey(), e.getValue(), type, DataModel.ColumnOrderPriority.HI == columnOrderPrio.get(prefix + e.getKey()), DataModel.ColumnOrderPriority.LO == columnOrderPrio.get(prefix + e.getKey()) });
 			}
 			
-			columnOrderPrio = new TreeMap<String, DataModel.ColumnOrderPriority>(dataModel.columnOrderPrio);
-			
+			columnOrderTable.getColumnModel().getColumn(1).setCellRenderer(renderer);
 			columnOrderTable.getColumnModel().getColumn(3).setCellRenderer(renderer);
 			columnOrderTable.getColumnModel().getColumn(4).setCellRenderer(renderer);
 			columnOrderTable.setDefaultRenderer(Object.class, renderer);
@@ -237,17 +265,52 @@ public class ColumnOrderEditor extends javax.swing.JPanel {
 		} finally {
 			UIUtil.resetWaitCursor(owner);
 		}
-        dialog = new EscapableDialog(owner, "Column Ordering") {
-        };
-        dialog.setModal(true);
-		dialog.getContentPane().add(this);
-		dialog.pack();
-		dialog.setSize(550, 600);
-		dialog.setLocation(owner.getX() + (owner.getWidth() - dialog.getWidth()) / 2, Math.max(0, owner.getY() + (owner.getHeight() - dialog.getHeight()) / 2));
-		UIUtil.fit(dialog);
+	}
 
-		dialog.setVisible(true);
-    }
+	List<String> tableList;
+
+	private void initTablesCombobox() {
+		tableList = new ArrayList<String>();
+		for (Table table: dataModel.getTables()) {
+			tableList.add(dataModel.getDisplayName(table));
+		}
+		Collections.sort(tableList);
+		tableList.add(0, ALL_TABLES);
+		
+		tablesComboBox.setModel(new DefaultComboBoxModel<String>(tableList.toArray(new String[0])));
+		
+		if (currentTable != null) {
+			String dn = dataModel.getDisplayName(currentTable);
+			int i = tableList.indexOf(dn);
+			if (i >= 0) {
+				tablesComboBox.setSelectedIndex(i);
+			}
+		}
+		
+		AutoCompletion.enable(tablesComboBox);
+		
+		tablesComboBox.addActionListener(new ActionListener() {
+			@Override
+			public void actionPerformed(ActionEvent e) {
+				Object si = tablesComboBox.getSelectedItem();
+				int i = tableList.indexOf(si);
+				if (i >= 0) {
+					if (ALL_TABLES.equals(si)) {
+						currentTable = null;
+					} else {
+						for (Table table: dataModel.getTables()) {
+							if (dataModel.getDisplayName(table).equals(si)) {
+								currentTable = table;
+								break;
+							}
+						}
+					}
+					updateTableModel(dialog, dataModel);
+					okButton.grabFocus();
+				}
+			}
+		});
+	}
 
 	/**
      * This method is called from within the constructor to initialize the form.
@@ -264,9 +327,12 @@ public class ColumnOrderEditor extends javax.swing.JPanel {
         jScrollPane1 = new javax.swing.JScrollPane();
         columnOrderTable = new javax.swing.JTable();
         closeButton = new javax.swing.JButton();
-        jinfoLabe = new javax.swing.JLabel();
         jSeparator1 = new javax.swing.JSeparator();
         okButton = new javax.swing.JButton();
+        jPanel3 = new javax.swing.JPanel();
+        jinfoLabe = new javax.swing.JLabel();
+        tablesComboBox = new JComboBox<>();
+        dummyLabel = new javax.swing.JLabel();
 
         setLayout(new java.awt.GridBagLayout());
 
@@ -285,6 +351,8 @@ public class ColumnOrderEditor extends javax.swing.JPanel {
                 "Title 1", "Title 2", "Title 3", "Title 4"
             }
         ));
+        columnOrderTable.setShowHorizontalLines(false);
+        columnOrderTable.setShowVerticalLines(false);
         jScrollPane1.setViewportView(columnOrderTable);
 
         gridBagConstraints = new java.awt.GridBagConstraints();
@@ -315,15 +383,6 @@ public class ColumnOrderEditor extends javax.swing.JPanel {
         gridBagConstraints.gridy = 100;
         gridBagConstraints.anchor = java.awt.GridBagConstraints.SOUTHEAST;
         jPanel1.add(closeButton, gridBagConstraints);
-
-        jinfoLabe.setText("Define the rendering position of columns.");
-        gridBagConstraints = new java.awt.GridBagConstraints();
-        gridBagConstraints.gridx = 1;
-        gridBagConstraints.gridy = 0;
-        gridBagConstraints.gridwidth = 2;
-        gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
-        gridBagConstraints.insets = new java.awt.Insets(0, 0, 4, 0);
-        jPanel1.add(jinfoLabe, gridBagConstraints);
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 1;
         gridBagConstraints.gridy = 2;
@@ -346,6 +405,38 @@ public class ColumnOrderEditor extends javax.swing.JPanel {
         gridBagConstraints.weightx = 1.0;
         jPanel1.add(okButton, gridBagConstraints);
 
+        jPanel3.setLayout(new java.awt.GridBagLayout());
+
+        jinfoLabe.setText("Define the rendering position of columns in table:  ");
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 1;
+        gridBagConstraints.gridy = 0;
+        gridBagConstraints.gridwidth = 2;
+        gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
+        jPanel3.add(jinfoLabe, gridBagConstraints);
+
+        tablesComboBox.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] { "Item 1", "Item 2", "Item 3", "Item 4" }));
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 3;
+        gridBagConstraints.gridy = 0;
+        jPanel3.add(tablesComboBox, gridBagConstraints);
+
+        dummyLabel.setText(" ");
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 5;
+        gridBagConstraints.gridy = 0;
+        gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
+        gridBagConstraints.weightx = 1.0;
+        jPanel3.add(dummyLabel, gridBagConstraints);
+
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 1;
+        gridBagConstraints.gridy = 0;
+        gridBagConstraints.gridwidth = 2;
+        gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
+        gridBagConstraints.insets = new java.awt.Insets(0, 0, 4, 0);
+        jPanel1.add(jPanel3, gridBagConstraints);
+
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 1;
         gridBagConstraints.gridy = 1;
@@ -365,6 +456,7 @@ public class ColumnOrderEditor extends javax.swing.JPanel {
     		dataModel.columnOrderPrio.clear();
     		dataModel.columnOrderPrio.putAll(columnOrderPrio);
 			dataModel.saveColumnOrderPrio();
+			ok = true;
 	    	dialog.dispose();
 		} catch (FileNotFoundException e) {
 			UIUtil.showException(this, "Error", e);
@@ -374,32 +466,18 @@ public class ColumnOrderEditor extends javax.swing.JPanel {
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.JButton closeButton;
     private javax.swing.JTable columnOrderTable;
+    private javax.swing.JLabel dummyLabel;
     private javax.swing.JPanel jPanel1;
     private javax.swing.JPanel jPanel2;
+    private javax.swing.JPanel jPanel3;
     private javax.swing.JScrollPane jScrollPane1;
     private javax.swing.JSeparator jSeparator1;
     private javax.swing.JLabel jinfoLabe;
     private javax.swing.JButton okButton;
+    private JComboBox<String> tablesComboBox;
     // End of variables declaration//GEN-END:variables
 
-	static final LinkedBlockingQueue<Runnable> queue = new LinkedBlockingQueue<Runnable>();
-    static {
-    	Thread thread = new Thread(new Runnable() {
-			@Override
-			public void run() {
-				for (;;) {
-					try {
-						queue.take().run();
-					} catch (Throwable t) {
-					}
-				}
-			}
-		});
-        thread.setDaemon(true);
-        thread.start();
-    }
-
-	public void adjustTableColumnsWidth() {
+    public void adjustTableColumnsWidth() {
 		adjustTableColumnsWidth(columnOrderTable, false);
 	}
 
@@ -422,6 +500,10 @@ public class ColumnOrderEditor extends javax.swing.JPanel {
 				column.setWidth(column.getPreferredWidth());
 			}
 		}
+	}
+
+	public boolean wasOk() {
+		return ok;
 	}
 
 }

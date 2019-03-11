@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2018 the original author or authors.
+ * Copyright 2007 - 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -111,6 +111,7 @@ public abstract class ConstraintChecker extends javax.swing.JPanel {
 			}
 		};
 		problemsTable.setModel(problemsModel);
+		problemsTable.setShowGrid(false);
 		final TableCellRenderer defaultTableCellRenderer = problemsTable.getDefaultRenderer(String.class);
 		problemsTable.setDefaultRenderer(Object.class, new TableCellRenderer() {
 			final Color BG1 = new Color(255, 255, 255);

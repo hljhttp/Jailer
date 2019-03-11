@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2018 the original author or authors.
+ * Copyright 2007 - 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -170,7 +170,7 @@ public class ModelBuilder {
 	 * @param warnings string-buffer to print warnings into, may be <code>null</code>
 	 */
 	public static void build(DataSource dataSource, DBMS dbms, String schema, StringBuffer warnings, ExecutionContext executionContext) throws Exception {
-		session = new Session(dataSource, dbms);
+		session = new Session(dataSource, dbms, executionContext.getIsolationLevel());
 		session.setIntrospectionSchema(schema);
 
 		resetFiles(executionContext);
@@ -249,7 +249,7 @@ public class ModelBuilder {
 							}
 						}
 						if (newPk.size() == old.primaryKey.getColumns().size()) {
-							table = new Table(old.getName(), new PrimaryKeyFactory().createPrimaryKey(newPk), false, false);
+							table = new Table(old.getName(), new PrimaryKeyFactory(executionContext).createPrimaryKey(newPk, old.getName()), false, false);
 							table.setAuthor(old.getAuthor());
 						}
 					}
@@ -273,7 +273,7 @@ public class ModelBuilder {
 		resetTableFile(tableDefinitions, executionContext);
 
 		// re-read data model with new tables
-		dataModel = new DataModel(getModelBuilderTablesFilename(executionContext), getModelBuilderAssociationsFilename(executionContext), new HashMap<String, String>(), assocFilter, new PrimaryKeyFactory(), executionContext, false, knownIdentifiers);
+		dataModel = new DataModel(getModelBuilderTablesFilename(executionContext), getModelBuilderAssociationsFilename(executionContext), new HashMap<String, String>(), assocFilter, new PrimaryKeyFactory(executionContext), executionContext, false, knownIdentifiers);
 
 		Collection<Association> associations = new ArrayList<Association>();
 		Map<Association, String[]> namingSuggestion = new HashMap<Association, String[]>();

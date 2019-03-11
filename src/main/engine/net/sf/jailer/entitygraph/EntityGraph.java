@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2018 the original author or authors.
+ * Copyright 2007 - 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@ import java.util.Set;
 
 import net.sf.jailer.ExecutionContext;
 import net.sf.jailer.configuration.DBMS;
+import net.sf.jailer.configuration.LimitTransactionSizeInfo;
 import net.sf.jailer.database.SQLDialect;
 import net.sf.jailer.database.Session;
 import net.sf.jailer.database.Session.ResultSetReader;
@@ -74,14 +75,15 @@ public abstract class EntityGraph {
 	public abstract void setBirthdayOfSubject(int birthdayOfSubject);
 	
 	public final DataModel dataModel;
+	protected boolean isTruncated = false;
 	
 	/**
-		* The execution context.
-		*/
-	   protected final ExecutionContext executionContext;
-	   
-	   protected boolean inDeleteMode = false;
-	
+	 * The execution context.
+	 */
+	protected final ExecutionContext executionContext;
+
+	protected boolean inDeleteMode = false;
+
 	/**
 	 * The unique ID of the graph.
 	 */
@@ -108,18 +110,7 @@ public abstract class EntityGraph {
 	 * @throws Exception 
 	 */
 	public abstract EntityGraph copy(int graphID, Session session) throws SQLException;
-	
-	/**
-	 * Finds an entity-graph.
-	 * 
-	 * @param graphID the unique ID of the graph
-	 * @param universalPrimaryKey the universal primary key
-	 * @param session for executing SQL-Statements
-	 * @return the entity-graph
-	 * @throws Exception 
-	 */
-	public abstract EntityGraph find(int graphID, Session session, PrimaryKey universalPrimaryKey) throws SQLException, Exception;
-	
+
 	/**
 	 * Gets the age of the graph.
 	 * 
@@ -142,7 +133,7 @@ public abstract class EntityGraph {
 	public abstract long getSize() throws SQLException;
 
 	/**
-	 * Gets the number of entities form given tables in the graph.
+	 * Gets the number of entities from given tables in the graph.
 	 * 
 	 * @return the number of entities in the graph
 	 * @throws SQLException 
@@ -150,16 +141,18 @@ public abstract class EntityGraph {
 	public long getSize(final Set<Table> tables) throws SQLException {
 		final long[] total = new long[1];
 		total[0] = 0;
-		getSession().executeQuery("Select type, count(*) From " + dmlTableReference(ENTITY, getSession()) + " Where r_entitygraph=" + graphID + " and birthday>=0 group by type", new Session.AbstractResultSetReader() {
-			@Override
-			public void readCurrentRow(ResultSet resultSet) throws SQLException {
-				Table table = dataModel.getTableByOrdinal(resultSet.getInt(1));
-				if (tables.contains(table)) {
-					long count = resultSet.getLong(2);
-					total[0] += count;
+		if (!tables.isEmpty()) {
+			getSession().executeQuery("Select type, count(*) From " + dmlTableReference(ENTITY, getSession()) + " Where r_entitygraph=" + graphID + " and birthday>=0 group by type", new Session.AbstractResultSetReader() {
+				@Override
+				public void readCurrentRow(ResultSet resultSet) throws SQLException {
+					Table table = dataModel.getTableByOrdinal(resultSet.getInt(1));
+					if (tables.contains(table)) {
+						long count = resultSet.getLong(2);
+						total[0] += count;
+					}
 				}
-			}
-		});
+			});
+		}
 		return total[0];
 	}
 
@@ -400,10 +393,7 @@ public abstract class EntityGraph {
 	 * @param association the asociation
 	 */
 	public void removeDependencies(Association association) throws SQLException {
-		String delete;
-		delete = "Delete from " + dmlTableReference(DEPENDENCY, getSession()) +
-		 " Where depend_id=" + association.getId() + " and r_entitygraph=" + graphID;
-		getSession().executeUpdate(delete);
+		deleteRows(getSession(), dmlTableReference(DEPENDENCY, getSession()), "depend_id=" + association.getId() + " and r_entitygraph=" + graphID);
 	}
 	
 	public abstract Session getTargetSession();
@@ -425,7 +415,7 @@ public abstract class EntityGraph {
 	 * The {@link ImportFilterManager}.
 	 */
 	protected ImportFilterManager importFilterManager;
-	
+
 	/**
 	 * Sets the {@link TransformerFactory}.
 	 * 
@@ -493,5 +483,89 @@ public abstract class EntityGraph {
 	protected String dmlTableReference(String tableName, Session session) throws SQLException {
 		return SQLDialect.dmlTableReference(tableName, session, executionContext);
 	}
-	
+
+	/**
+	 * Deletes rows from table.
+	 * Applies DBMS-specific deletion strategies, if available.
+	 * 
+	 * @param session the session
+	 * @param table the table
+	 * @param where the "where" condition
+	 * 
+	 * @return row count
+	 */
+	protected long deleteRows(Session session, String table, String where) throws SQLException {
+		LimitTransactionSizeInfo limitTransactionSize = session.dbms.getLimitTransactionSize();
+		long rc = 0;
+
+		if (limitTransactionSize.isApplicable(executionContext)) {
+			try {
+				long c;
+				do {
+					c = session.executeUpdate("Delete " + limitTransactionSize.afterSelectFragment(executionContext)
+							+ "from " + table + " where (" + where + ") "
+							+ limitTransactionSize.additionalWhereConditionFragment(executionContext)
+							+ limitTransactionSize.statementSuffixFragment(executionContext));
+					rc += c;
+				} while (c > 0 && c == limitTransactionSize.getLimit());
+				return rc;
+			} catch (Exception e) {
+				// fall back
+			}
+		}
+		
+		return rc + session.executeUpdate("Delete from " + table + " where " + where);
+	}
+
+	/**
+	 * Tries to delete this graph using "truncate".
+	 * 
+	 * @param checkExist if <code>true</code>, checks existence of each graph
+	 */
+	public void truncate(ExecutionContext executionContext, boolean checkExist) throws SQLException {
+		if (isTruncated) {
+			return;
+		}
+		if (executionContext.isEmbedded()) {
+			return;
+		}
+		if (checkExist) {
+			checkExist(executionContext);
+		}
+		final int count[] = new int[] { 0 };
+		getSession().executeQuery("Select count(*) from " + SQLDialect.dmlTableReference(ENTITY_GRAPH, getSession(), executionContext), new Session.AbstractResultSetReader() {
+			@Override
+			public void readCurrentRow(ResultSet resultSet) throws SQLException {
+				count[0] = resultSet.getInt(1);
+			}
+		});
+		if (count[0] == 1) {
+			try {
+				getSession().execute("Truncate Table " + SQLDialect.dmlTableReference(DEPENDENCY, getSession(), executionContext));
+				getSession().execute("Truncate Table " + SQLDialect.dmlTableReference(ENTITY, getSession(), executionContext));
+				getSession().execute("Truncate Table " + SQLDialect.dmlTableReference(ENTITY_GRAPH, getSession(), executionContext));
+			} catch (SQLException e) {
+				// "truncate" not supported
+				return;
+			}
+			isTruncated  = true;
+		}
+	}
+
+	/**
+	 * Check if the graph still exists.
+	 */
+	public void checkExist(ExecutionContext executionContext) throws SQLException {
+		final boolean found[] = new boolean[] { false };
+		getSession().executeQuery("Select * from " + SQLDialect.dmlTableReference(ENTITY_GRAPH, getSession(), executionContext) + " Where id=" + graphID, new Session.AbstractResultSetReader() {
+			@Override
+			public void readCurrentRow(ResultSet resultSet) throws SQLException {
+				found[0] = true;
+			}
+		});
+		if (!found[0]) {
+			throw new RuntimeException("EntityGraph has been deleted.");
+		}
+	}
+
 }

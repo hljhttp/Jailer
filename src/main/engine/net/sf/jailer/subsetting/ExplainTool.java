@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2018 the original author or authors.
+ * Copyright 2007 - 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,6 +37,7 @@ import net.sf.jailer.datamodel.RowIdSupport;
 import net.sf.jailer.datamodel.Table;
 import net.sf.jailer.entitygraph.EntityGraph;
 import net.sf.jailer.util.CellContentConverter;
+import net.sf.jailer.util.LogUtil;
 import net.sf.jailer.util.Quoting;
 
 /**
@@ -187,7 +188,8 @@ public class ExplainTool {
 	
 	private static File newFile(String name) {
 		File home = null;
-		if (new File(".singleuser").exists()) {
+		if (new File(".singleuser").exists() // legacy 
+				|| new File(".multiuser").exists()) {
 			home = new File(System.getProperty("user.home"), ".jailer");
 			home.mkdirs();
 		}

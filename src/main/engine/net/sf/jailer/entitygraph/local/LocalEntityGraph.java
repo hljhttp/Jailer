@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2018 the original author or authors.
+ * Copyright 2007 - 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -217,9 +217,9 @@ public class LocalEntityGraph extends EntityGraph {
 	 * @param remoteSession
 	 */
 	private LocalEntityGraph(int graphID, Session remoteSession, ExecutionContext executionContext) throws IOException, SQLException {
-		super(graphID, new DataModel(new PrimaryKeyFactory() {
+		super(graphID, new DataModel(new PrimaryKeyFactory(executionContext) {
 			@Override
-			public PrimaryKey createPrimaryKey(List<Column> columns) {
+			public PrimaryKey createPrimaryKey(List<Column> columns, String tableName) {
 				List<Column> localPK = new ArrayList<Column>(columns.size());
 				for (Column c: columns) {
 					if (c.type.equalsIgnoreCase("nvarchar") || c.type.equalsIgnoreCase("nchar")) {
@@ -228,7 +228,7 @@ public class LocalEntityGraph extends EntityGraph {
 						localPK.add(new Column(c.name, getConfiguration().getLocalPKType(), getConfiguration().getLocalPKLength(), -1));
 					}
 				}
-				return super.createPrimaryKey(localPK);
+				return super.createPrimaryKey(localPK, tableName);
 			}
 		}, executionContext.getSourceSchemaMapping(), executionContext), executionContext);
 		this.remoteSession = remoteSession;
@@ -335,34 +335,6 @@ public class LocalEntityGraph extends EntityGraph {
 	}
 
 	/**
-	 * Finds an entity-graph.
-	 * 
-	 * @param graphID the unique ID of the graph
-	 * @param universalPrimaryKey the universal primary key
-	 * @param localSession for executing SQL-Statements
-	 * @return the entity-graph
-	 */
-	@Override
-	public EntityGraph find(int graphID, Session localSession, PrimaryKey universalPrimaryKey) throws IOException, SQLException {
-		LocalEntityGraph entityGraph = new LocalEntityGraph(graphID, localSession, executionContext);
-		final boolean[] found = new boolean[1];
-		found[0] = false;
-		localSession.executeQuery("Select * From " + dmlTableReference(ENTITY_GRAPH, localSession) + "Where id=" + graphID + "", new Session.ResultSetReader() {
-			@Override
-			public void readCurrentRow(ResultSet resultSet) throws SQLException {
-				found[0] = true;
-			}
-			@Override
-			public void close() {
-			}
-		});
-		if (!found[0]) {
-			throw new RuntimeException("entity-graph " + graphID + " not found");
-		}
-		return entityGraph;
-	}
-
-	/**
 	 * Gets the age of the graph.
 	 * 
 	 * @return the age of the graph
@@ -419,9 +391,11 @@ public class LocalEntityGraph extends EntityGraph {
 	 */
 	@Override
 	public void delete() throws SQLException {
-		localSession.executeUpdate("Delete from " + dmlTableReference(DEPENDENCY, localSession) + " Where r_entitygraph=" + graphID + "");
-		localSession.executeUpdate("Delete from " + dmlTableReference(ENTITY, localSession) + " Where r_entitygraph=" + graphID + "");
-		localSession.executeUpdate("Delete from " + dmlTableReference(ENTITY_GRAPH, localSession) + " Where id=" + graphID + "");
+		if (!isTruncated) {
+			localSession.executeUpdate("Delete from " + dmlTableReference(DEPENDENCY, localSession) + " Where r_entitygraph=" + graphID + "");
+			localSession.executeUpdate("Delete from " + dmlTableReference(ENTITY, localSession) + " Where r_entitygraph=" + graphID + "");
+			localSession.executeUpdate("Delete from " + dmlTableReference(ENTITY_GRAPH, localSession) + " Where id=" + graphID + "");
+		}
 	}
 
 	/**
@@ -578,27 +552,8 @@ public class LocalEntityGraph extends EntityGraph {
 		remoteSession.executeQuery(select, new LocalInlineViewBuilder(alias, upkColumnList(table, null)) {
 			@Override
 			protected void process(String inlineView) throws SQLException {
-				Map<Column, Column> match = upkMatch(table);
-				StringBuffer sb = new StringBuffer();
-				for (Column column: universalPrimaryKey.getColumns()) {
-					if (sb.length() > 0) {
-						sb.append(" and ");
-					}
-					Column tableColumn = match.get(column);
-					sb.append("Duplicate." + column.name);
-					if (tableColumn != null) {
-						sb.append("=" + alias + "." + column.name);
-					} else {
-						sb.append(" is null");
-					}
-				}
-				
-				String entityJoinCondition = sb.toString();
 				String select = "Select " + graphID + " as GRAPH_ID, " + upkColumnList(table, alias, null) + ", " + today + " AS BIRTHDAY, " + typeName(table) + " AS TYPE" +
-				" From " + inlineView + 
-				" left join " + dmlTableReference(ENTITY, localSession) + " Duplicate on Duplicate.r_entitygraph=" + graphID + " and Duplicate.type=" + typeName(table) + " and " +
-				entityJoinCondition + 
-				" Where Duplicate.type is null";
+				" From " + inlineView;
 				
 				String insert = "Insert into " + dmlTableReference(ENTITY, localSession) + " (r_entitygraph, " + upkColumnList(table, null) + ", birthday, type) " + select;
 				rc[0] += localSession.executeUpdate(insert);
@@ -888,7 +843,7 @@ public class LocalEntityGraph extends EntityGraph {
 	@Override
 	public void readEntities(Table table, boolean orderByPK) throws SQLException {
 		Session.ResultSetReader reader = getTransformerFactory().create(table);
-		long rc = readEntities(table, orderByPK, reader, true);
+		readEntities(table, orderByPK, reader, true);
 	}
 
 	/**

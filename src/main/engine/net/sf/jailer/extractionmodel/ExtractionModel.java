@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2018 the original author or authors.
+ * Copyright 2007 - 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -199,9 +199,10 @@ public class ExtractionModel {
 		DataModel dataModel = new DataModel(sourceSchemaMapping, executionContext, true);
 		Table subject = getTable(dataModel, SqlUtil.mappedSchema(sourceSchemaMapping, subjectLine.cells.get(0)));
 		if (subject == null) {
-			String message = location + ": unknown subject table " + subjectLine.cells.get(0);
+			subjectTableName = subjectLine.cells.get(0);
+			String message = location + ": unknown subject table " + subjectTableName;
 			if (failOnMissingSubject) {
-				throw new RuntimeException(message);
+				throw new IncompatibleModelException(message);
 			} else {
 				_log.warn(message);
 			}
@@ -215,7 +216,7 @@ public class ExtractionModel {
 			try {
 				limit = Long.parseLong(subjectLine.cells.get(2));
 			} catch (NumberFormatException e) {
-				throw new RuntimeException(location, e);
+				limit = 0;
 			}
 		}
 		if (dataModel.getRestrictionModel() == null) {
@@ -398,7 +399,7 @@ public class ExtractionModel {
 		}
 		
 		dataModel.deriveFilters();
-		disableUnknownChildren(new CsvFile(modelURL.openStream(), "known", csvLocation, null).getLines());
+		disableUnknownAssociations(new CsvFile(modelURL.openStream(), "known", csvLocation, null).getLines());
 	}
 
 	private KnownIdentifierMap knownIdentifierMap;
@@ -420,18 +421,25 @@ public class ExtractionModel {
 		return table;
 	}
 
-	private void disableUnknownChildren(List<Line> lines) {
+	private void disableUnknownAssociations(List<Line> lines) {
 		Set<String> known = new HashSet<String>();
+		dataModel.decisionPending.clear();
 		for (Line line: lines) {
 			known.add(line.cells.get(0));
+			if ("pending".equalsIgnoreCase(line.cells.get(1))) {
+				dataModel.decisionPending.add(line.cells.get(0));
+			}
 		}
 		if (known.isEmpty()) {
 			return;
 		}
 		for (Association a: dataModel.namedAssociations.values()) {
 			String name = a.reversed? a.reversalAssociation.getName() : a.getName();
-			if (!known.contains(name) && a.isInsertSourceBeforeDestination()) {
-				dataModel.getRestrictionModel().addRestriction(a.source, a, "false", "SYSTEM", true, new HashMap<String, String>());
+			if (!known.contains(name)) {
+				if (a.isInsertSourceBeforeDestination()) {
+					dataModel.getRestrictionModel().addRestriction(a.source, a, "false", "SYSTEM", true, new HashMap<String, String>());
+				}
+				dataModel.decisionPending.add(name);
 			}
 		}
 	}
@@ -449,6 +457,22 @@ public class ExtractionModel {
 	 */
 	public String getCondition() {
 		return condition;
+	}
+
+	private String subjectTableName;
+
+	public String getSubjectTableName() {
+		return subjectTableName;
+	}
+	
+	public static class IncompatibleModelException extends RuntimeException {
+		
+		public IncompatibleModelException(String message) {
+			super(message);
+		}
+
+		private static final long serialVersionUID = -4612042345601502761L;
+		
 	}
 	
 }

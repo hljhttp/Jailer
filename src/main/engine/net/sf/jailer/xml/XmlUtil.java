@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2018 the original author or authors.
+ * Copyright 2007 - 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -43,6 +43,8 @@ import org.w3c.dom.NodeList;
 import org.w3c.dom.Text;
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
+
+import net.sf.jailer.util.PrintUtil;
 
 /**
  * XML parsing and building.
@@ -256,11 +258,7 @@ public class XmlUtil {
 		serializer.setOutputProperty(OutputKeys.INDENT, "yes");
 		transformerHandler.setResult(streamResult);
 		transformerHandler.startDocument();
-		String newline = System.getProperty("line.separator");
-		if (newline == null) {
-			newline = "\n";
-		}
-		commentHeader = (newline + commentHeader).replaceAll("\\n--", newline + " ");
+		commentHeader = (PrintUtil.LINE_SEPARATOR + commentHeader).replaceAll("\\r?\\n--", PrintUtil.LINE_SEPARATOR + " ");
 		transformerHandler.characters("\n".toCharArray(), 0, 1);
 		transformerHandler.comment(commentHeader.toCharArray(), 0, commentHeader.toCharArray().length);
 		transformerHandler.characters("\n".toCharArray(), 0, 1);

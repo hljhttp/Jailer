@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2018 the original author or authors.
+ * Copyright 2007 - 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -47,11 +47,6 @@ import net.sf.jailer.database.Session;
  */
 public class CellContentConverter {
 
-	/**
-	 * All hex digits.
-	 */
-	private static final char[] hexChar = new char[] { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f' };
-	
 	private final ResultSetMetaData resultSetMetaData;
 	private final Map<Integer, Integer> typeCache = new HashMap<Integer, Integer>();
 	private final Map<String, Integer> columnIndex = new HashMap<String, Integer>();
@@ -134,7 +129,7 @@ public class CellContentConverter {
 		if (content instanceof Time) {
 			return "'" + content + "'";
 		}
-		if (content.getClass().getSimpleName().equals("PGobject")) {
+		if (DBMS.POSTGRESQL.equals(configuration) && content.getClass().getSimpleName().equals("PGobject")) {
 			try {
 				if (pgObjectGetType == null) {
 					pgObjectGetType = content.getClass().getMethod("getType");
@@ -154,8 +149,8 @@ public class CellContentConverter {
 			}
 			return "'" + content + "'";
 		}
-		if (targetConfiguration.isIdentityInserts()) {
-			// Boolean mapping for MSSQL/Sybase
+		if (DBMS.MSSQL.equals(targetConfiguration) || DBMS.SYBASE.equals(targetConfiguration) || DBMS.SQLITE.equals(targetConfiguration)) {
+			// Boolean mapping for MSSQL/Sybase/SQLite
 			if (content instanceof Boolean) {
 				content = Boolean.TRUE.equals(content)? "1" : "0";
 			}
@@ -201,7 +196,7 @@ public class CellContentConverter {
 		POSTGRES_EXTENSIONS.addAll(Arrays.asList("hstore", "ghstore", "json", "jsonb", "_hstore", "_json", "_jsonb", "_ghstore"));
 	}
 	
-	public static class PObjectWrapper {
+	public static class PObjectWrapper implements Comparable<PObjectWrapper> {
 		private final String value;
 		private final String type;
 		public PObjectWrapper(String value, String type) {
@@ -218,16 +213,82 @@ public class CellContentConverter {
 		public String toString() {
 			return value;
 		}
+		@Override
+		public int hashCode() {
+			final int prime = 31;
+			int result = 1;
+			result = prime * result + ((type == null) ? 0 : type.hashCode());
+			result = prime * result + ((value == null) ? 0 : value.hashCode());
+			return result;
+		}
+		@Override
+		public boolean equals(Object obj) {
+			if (this == obj)
+				return true;
+			if (obj == null)
+				return false;
+			if (getClass() != obj.getClass())
+				return false;
+			PObjectWrapper other = (PObjectWrapper) obj;
+			if (type == null) {
+				if (other.type != null)
+					return false;
+			} else if (!type.equals(other.type))
+				return false;
+			if (value == null) {
+				if (other.value != null)
+					return false;
+			} else if (!value.equals(other.value))
+				return false;
+			return true;
+		}
+		@Override
+		public int compareTo(PObjectWrapper o) {
+			if (o instanceof PObjectWrapper) {
+				return toString().compareTo(o.toString());
+			}
+			return 0;
+		}
 	}
 
-	static class NCharWrapper {
+	public static class NCharWrapper implements Comparable<NCharWrapper> {
 		private final String value;
 		public NCharWrapper(String value) {
 			this.value = value;
 		}
 		@Override
+		public int hashCode() {
+			final int prime = 31;
+			int result = 1;
+			result = prime * result + ((value == null) ? 0 : value.hashCode());
+			return result;
+		}
+		@Override
+		public boolean equals(Object obj) {
+			if (this == obj)
+				return true;
+			if (obj == null)
+				return false;
+			if (getClass() != obj.getClass())
+				return false;
+			NCharWrapper other = (NCharWrapper) obj;
+			if (value == null) {
+				if (other.value != null)
+					return false;
+			} else if (!value.equals(other.value))
+				return false;
+			return true;
+		}
+		@Override
 		public String toString() {
 			return value;
+		}
+		@Override
+		public int compareTo(NCharWrapper o) {
+			if (o instanceof NCharWrapper) {
+				return toString().compareTo(o.toString());
+			}
+			return 0;
 		}
 	}
 
@@ -310,7 +371,7 @@ public class CellContentConverter {
 			return resultSet.getString(i);
 		}
 		Object object = resultSet.getObject(i);
-		if (type == Types.NCHAR || type == Types.NVARCHAR) {
+		if (type == Types.NCHAR || type == Types.NVARCHAR || type == Types.LONGNVARCHAR) {
 			if (object instanceof String) {
 				object = new NCharWrapper((String) object);
 			}
@@ -437,4 +498,9 @@ public class CellContentConverter {
 		return null;
 	}
 
+	/**
+	 * All hex digits.
+	 */
+	public static final char[] hexChar = new char[] { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f' };
+	
 }

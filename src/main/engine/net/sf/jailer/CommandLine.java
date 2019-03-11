@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2018 the original author or authors.
+ * Copyright 2007 - 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -137,15 +137,30 @@ public class CommandLine {
 
 	@Option(name="-no-sorting", usage="the exported rows will not be sorted according to foreign key constraints")
 	public boolean noSorting = false;
+
+	@Option(name="-order-by-pk", usage="Orders the exported rows according to the primary key.")
+	public boolean orderByPK = false;
+
+	@Option(name="-independent-working-tables", usage="create working tables that are independent of the extraction model. (Potentially less efficient)")
+	public boolean independentWorkingTables = false;
 	
 	@Option(name="-transactional", usage="import rows in a single transaction")
 	public boolean transactional = false;
+	
+	@Option(name="-isolation-level", usage="isolation level (optional), 1=READ_UNCOMMITTED, 2=READ_COMMITTED, 4=REPEATABLE_READ, 8=SERIALIZABLE")
+	public Integer isolationLevel = null;
 	
 	@Option(name="-no-rowid", usage="use primary keys to determine row identity (instead of rowid-column)")
 	public boolean noRowid = false;
 	
 	@Option(name="-import-filter-mapping-table-schema", usage="schema in which the import-filter mapping tables will be created")
 	public String importFilterMappingTableSchema = "";
+	
+	@Option(name="-check-primary-keys", usage="should the PKs be checked for validity?")
+	boolean checkPrimaryKeys = false;
+
+	@Option(name="-limit-transaction-size", usage="collects the rows using multiple insert operations with a limited number of rows per operation")
+	boolean insertIncrementally = false;
 	
 	@Argument
 	public List<String> arguments = new ArrayList<String>();
