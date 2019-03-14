@@ -147,5 +147,10 @@
         <SOURCES />
       </library>
     </orderEntry>
+    <orderEntry type="library" name="schemaspy-6.0.0" level="project" />
+    <orderEntry type="library" name="mapdb-3.0.7" level="project" />
+    <orderEntry type="library" name="nitrite-3.1.0" level="project" />
+    <orderEntry type="library" name="slf4j-api-1.7.25" level="project" />
+    <orderEntry type="library" name="h2-mvstore-1.4.197" level="project" />
   </component>
 </module>

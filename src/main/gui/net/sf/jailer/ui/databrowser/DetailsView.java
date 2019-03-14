@@ -15,10 +15,7 @@
  */
 package net.sf.jailer.ui.databrowser;
 
-import java.awt.Color;
-import java.awt.Font;
-import java.awt.GridBagConstraints;
-import java.awt.GridBagLayout;
+import java.awt.*;
 import java.awt.event.KeyEvent;
 import java.awt.event.KeyListener;
 import java.math.BigDecimal;
@@ -41,6 +38,7 @@ import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
 import javax.swing.table.TableModel;
 
+import net.sf.jailer.Singleton;
 import net.sf.jailer.database.Session;
 import net.sf.jailer.datamodel.Column;
 import net.sf.jailer.datamodel.DataModel;
@@ -49,6 +47,11 @@ import net.sf.jailer.datamodel.Table;
 import net.sf.jailer.ui.UIUtil;
 import net.sf.jailer.util.Quoting;
 import net.sf.jailer.util.SqlUtil;
+import org.dizitart.no2.Document;
+import org.dizitart.no2.Nitrite;
+import org.dizitart.no2.NitriteCollection;
+
+import static org.dizitart.no2.filters.Filters.eq;
 
 /**
  * Row Details View.
@@ -64,6 +67,7 @@ public abstract class DetailsView extends javax.swing.JPanel {
 	private final RowIdSupport rowIdSupport;
 	private final boolean showSpinner;
 	private final Session session;
+
 
 	/** Creates new form DetailsView 
 	 * @param rowSorter 
@@ -191,9 +195,16 @@ public abstract class DetailsView extends javax.swing.JPanel {
 				}
 			});
 		}
+
+		// todo hlj add displayname
+		Nitrite db = Singleton.getInstance().DB();
+		NitriteCollection columnsMap = db.getCollection("columnsMap");
+
+
 		while (i < columns.size()) {
 			Column c = columns.get(columnIndex.get(i));
 			JLabel l = new JLabel();
+
 			l.setText(" " + c.name + "    ");
 			l.setFont(nonbold);
 			gridBagConstraints = new java.awt.GridBagConstraints();
@@ -258,6 +269,31 @@ public abstract class DetailsView extends javax.swing.JPanel {
 				labelColors.add(f.getBackground());
 				labels.add(f);
 			}
+
+			String displayName = c.name;
+			JLabel comments = new JLabel();
+			Document document = columnsMap.find(eq("full_name", this.table.getName()+"."+c.name)).firstOrDefault();
+			if(document != null)
+			{
+				displayName = document.get("comments").toString();
+			}
+			comments.setText(" " + displayName + "    ");
+			comments.setFont(nonbold);
+
+			gridBagConstraints = new java.awt.GridBagConstraints();
+			gridBagConstraints.anchor = java.awt.GridBagConstraints.WEST;
+			gridBagConstraints.weightx = 0;
+			gridBagConstraints.weighty = 0;
+			gridBagConstraints.fill = java.awt.GridBagConstraints.BOTH;
+			gridBagConstraints.gridx = 2;
+			gridBagConstraints.gridy = i;
+			if (!selectableFields) {
+				l.setVerticalAlignment(SwingConstants.TOP);
+			}
+
+			content.add(comments, gridBagConstraints);
+
+
 			++i;
 		}
 		if (selectableFields) {

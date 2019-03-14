@@ -210,7 +210,7 @@ public class MemorizedResultSet implements ResultSet {
 
 	@Override
 	public void beforeFirst() throws SQLException {
-		throw new UnsupportedOperationException();
+		reset();
 
 	}
 
@@ -1256,7 +1256,19 @@ public class MemorizedResultSet implements ResultSet {
 
 	@Override
 	public void updateString(int columnIndex, String x) throws SQLException {
-		throw new UnsupportedOperationException();
+
+		Object[] row = rowList.get(index);
+		Object c;
+		if (columnIndex > row.length) {
+			c = null;
+		}
+		c = row[columnIndex - 1];
+		wasNull = c == null;
+
+		row[columnIndex - 1] = x;
+		//return c;
+
+		//throw new UnsupportedOperationException();
 
 	}
 

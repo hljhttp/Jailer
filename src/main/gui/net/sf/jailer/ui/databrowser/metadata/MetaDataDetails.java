@@ -23,11 +23,17 @@ import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableColumnModel;
 import javax.swing.table.TableModel;
 
+import net.sf.jailer.Singleton;
 import net.sf.jailer.database.Session;
 import net.sf.jailer.modelbuilder.JDBCMetaDataBasedModelElementFinder;
 import net.sf.jailer.modelbuilder.MemorizedResultSet;
 import net.sf.jailer.modelbuilder.MemorizedResultSetTransformer;
 import net.sf.jailer.util.Quoting;
+import org.dizitart.no2.Document;
+import org.dizitart.no2.Nitrite;
+import org.dizitart.no2.NitriteCollection;
+
+import static org.dizitart.no2.filters.Filters.eq;
 
 /**
  * Meta Data Details.
@@ -39,7 +45,27 @@ public enum MetaDataDetails {
 	COLUMNS("Columns", 0) {
 		@Override
 		public ResultSet readMetaDataDetails(Session session, MDTable mdTable) throws SQLException {
-			return JDBCMetaDataBasedModelElementFinder.getColumns(session, session.getMetaData(), Quoting.staticUnquote(mdTable.getSchema().getName()), Quoting.staticUnquote(mdTable.getName()), "%", true, true, mdTable.isSynonym()? "SYNONYM" : null);
+			ResultSet resultSet = JDBCMetaDataBasedModelElementFinder.getColumns(session, session.getMetaData(), Quoting.staticUnquote(mdTable.getSchema().getName()), Quoting.staticUnquote(mdTable.getName()), "%", true, true, mdTable.isSynonym()? "SYNONYM" : null);
+
+			// todo hlj add displayname
+			Nitrite db = Singleton.getInstance().DB( );
+			NitriteCollection columnsMap = db.getCollection("columnsMap");
+
+			ResultSet rm = new MemorizedResultSet(resultSet, null, session, null);
+			while (rm.next()) {
+				String tableName = rm.getString(3);
+				String columnName = rm.getString(4);
+				String displayName = "";
+				Document document = columnsMap.find(eq("full_name", tableName+"."+columnName)).firstOrDefault();
+				if(document != null)
+				{
+					displayName = document.get("comments").toString();
+				}
+				rm.updateString(12,displayName);
+				//columnName = rm.getString(12);
+			}
+			rm.beforeFirst();
+			return rm;
 		}
 		@Override
 		public void adjustRowsTable(JTable rowsTable) {
@@ -50,6 +76,9 @@ public enum MetaDataDetails {
 				columnModel.moveColumn(17, 2);
 				columnModel.moveColumn(6 + 1, 3);
 				columnModel.moveColumn(8 + 1, 4);
+
+				// hlj 将注释移动到前面
+				columnModel.moveColumn(12, 1);
 			}
 		}
 	},

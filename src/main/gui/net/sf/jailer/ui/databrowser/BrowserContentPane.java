@@ -110,13 +110,7 @@ import javax.swing.event.RowSorterEvent;
 import javax.swing.event.RowSorterListener;
 import javax.swing.event.TreeSelectionEvent;
 import javax.swing.event.TreeSelectionListener;
-import javax.swing.table.DefaultTableCellRenderer;
-import javax.swing.table.DefaultTableModel;
-import javax.swing.table.TableCellRenderer;
-import javax.swing.table.TableColumn;
-import javax.swing.table.TableColumnModel;
-import javax.swing.table.TableModel;
-import javax.swing.table.TableRowSorter;
+import javax.swing.table.*;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeCellRenderer;
 import javax.swing.tree.DefaultTreeModel;
@@ -124,6 +118,7 @@ import javax.swing.tree.DefaultTreeModel;
 import net.coderazzi.filters.gui.AutoChoices;
 import net.coderazzi.filters.gui.TableFilterHeader;
 import net.sf.jailer.ExecutionContext;
+import net.sf.jailer.Singleton;
 import net.sf.jailer.configuration.Configuration;
 import net.sf.jailer.database.InlineViewStyle;
 import net.sf.jailer.database.Session;
@@ -164,6 +159,11 @@ import net.sf.jailer.util.CellContentConverter.PObjectWrapper;
 import net.sf.jailer.util.Pair;
 import net.sf.jailer.util.Quoting;
 import net.sf.jailer.util.SqlUtil;
+import org.dizitart.no2.Document;
+import org.dizitart.no2.Nitrite;
+import org.dizitart.no2.NitriteCollection;
+
+import static org.dizitart.no2.filters.Filters.eq;
 
 /**
  * Content UI of a row browser frame (as {@link JInternalFrame}s). Contains a
@@ -395,7 +395,7 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
 	/**
 	 * The data model.
 	 */
-	private final DataModel dataModel;
+	public final DataModel dataModel;
 	
 	/**
 	 * The execution context.
@@ -672,12 +672,51 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
 			}
 		});
 
+		String tname = "";
+		if(table != null){
+			tname = table.getName();
+		}
+		final String tableName = tname;
+
 		initialRowHeight = rowsTable.getRowHeight();
 
 		rowsTable = new JTable() {
 			private int x[] = new int[2];
 			private int y[] = new int[2];
 			private Color color = new Color(0, 0, 200);
+
+			@Override
+			protected JTableHeader createDefaultTableHeader() {
+
+				return new JTableHeader(columnModel) {
+
+					public String getToolTipText(MouseEvent e) {
+						String tip = null;
+						java.awt.Point p = e.getPoint();
+						int index = columnModel.getColumnIndexAtX(p.x);
+						TableColumn col = columnModel.getColumn(index);
+						int realIndex = col.getModelIndex();
+
+						// todo hlj add displayname
+						Nitrite db = Singleton.getInstance().DB( );
+						NitriteCollection columnsMap = db.getCollection("columnsMap");
+						String displayName = null;
+						JLabel comments = new JLabel();
+						Document document = columnsMap.find(eq("full_name", tableName+"."+col.getHeaderValue().toString())).firstOrDefault();
+						if(document != null)
+						{
+							displayName = document.get("comments").toString();
+						}
+						if(displayName != null)
+						{
+							return displayName;
+						}
+
+						return col.getHeaderValue().toString();
+					}
+
+				};
+			}
 
 			@Override
 			public void paint(Graphics graphics) {
@@ -1386,9 +1425,9 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
 	/**
 	 * Creates popup menu for navigation.
 	 * @param navigateFromAllRows 
-	 * @param copyTCB 
-	 * @param runnable 
-	 * @param runnable 
+	 * @param row
+	 * @param rowIndex
+	 * @param x
 	 */
 	public JPopupMenu createPopupMenu(final Row row, final int rowIndex, final int x, final int y, boolean navigateFromAllRows) {
 		return createPopupMenu(row, rowIndex, x, y, navigateFromAllRows, null, null);
@@ -1397,7 +1436,7 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
 	/**
 	 * Creates popup menu for navigation.
 	 * @param navigateFromAllRows 
-	 * @param runnable 
+	 * @param repaint
 	 */
 	public JPopupMenu createPopupMenu(final Row row, final int rowIndex, final int x, final int y, boolean navigateFromAllRows, JMenuItem altCopyTCB, final Runnable repaint) {
 		return createPopupMenu(row, rowIndex, x, y, navigateFromAllRows, altCopyTCB, repaint, true);
@@ -1406,7 +1445,7 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
 	/**
 	 * Creates popup menu for navigation.
 	 * @param navigateFromAllRows 
-	 * @param runnable 
+	 * @param repaint
 	 */
 	public JPopupMenu createPopupMenu(final Row row, final int rowIndex, final int x, final int y, boolean navigateFromAllRows, JMenuItem altCopyTCB, final Runnable repaint, final boolean withKeyStroke) {
 		JMenuItem tableFilter = new JCheckBoxMenuItem("Table Filter");
@@ -1725,7 +1764,7 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
 	/**
 	 * Creates popup menu for SQL.
 	 * @param forNavTree 
-	 * @param browserContentPane 
+	 * @param parentrow
 	 */
 	public JPopupMenu createSqlPopupMenu(final Row parentrow, final int rowIndex, final int x, final int y, boolean forNavTree, final Component parentComponent) {
 		JPopupMenu popup = new JPopupMenu();
@@ -3055,10 +3094,10 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
 	 * 
 	 * @param rows
 	 *            to put the rows into
-	 * @param context
+	 * @param andCond
 	 *            cancellation context
-	 * @param rowCache 
-	 * @param allPRows 
+	 * @param parentRows
+	 * @param rows
 	 */
 	private void reloadRows(ResultSet inputResultSet, InlineViewStyle inlineViewStyle, String andCond, final List<Row> parentRows, final Map<String, List<Row>> rows, LoadJob loadJob, int limit, boolean useOLAPLimitation,
 			String sqlLimitSuffix, Set<String> existingColumnsLowerCase) throws SQLException {
@@ -3493,10 +3532,8 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
 	
 	/**
 	 * Updates the model of the {@link #rowsTable}.
-	 * 
-	 * @param limit
-	 *            row limit
-	 * @param limitExceeded 
+	 *
+	 *
 	 */
 	private void updateTableModel() {
 		updateTableModel(lastLimit, lastLimitExceeded, lastClosureLimitExceeded);
@@ -5217,7 +5254,7 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
 		});
 		d.pack();
 		d.setLocation(x, y);
-		d.setSize(400, d.getHeight() + 20);
+		d.setSize(1024, d.getHeight() + 20);
 		UIUtil.fit(d);
 		d.setVisible(true);
 		setCurrentRowSelectionAndReloadChildrenIfLimitIsExceeded(-1);
@@ -5289,14 +5326,14 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
 		});
 		d.pack();
 		d.setLocation(x, y);
-		d.setSize(400, d.getHeight() + 20);
+		d.setSize(1024, d.getHeight() + 20);
 		int h = d.getHeight();
 		UIUtil.fit(d);
 		if (d.getHeight() < h) {
-			y = Math.max(y - Math.min(h - d.getHeight(), Math.max(400 - d.getHeight(), 0)), 20);
+			y = Math.max(y - Math.min(h - d.getHeight(), Math.max(1024 - d.getHeight(), 0)), 20);
 			d.pack();
 			d.setLocation(x, y);
-			d.setSize(400, d.getHeight() + 20);
+			d.setSize(1024, d.getHeight() + 20);
 			UIUtil.fit(d);
 		}
 		d.setVisible(true);

@@ -33,6 +33,12 @@ public class Column {
 	 * The name.
 	 */
 	public final String name;
+
+
+	/**
+	 * The name.
+	 */
+	private final String displayName;
 	
 	/**
 	 * The type.
@@ -82,6 +88,7 @@ public class Column {
 		this.type = type;
 		this.length = length;
 		this.precision = precision;
+		this.displayName = "@"+this.name;
 	}
 
 	/**
@@ -115,7 +122,7 @@ public class Column {
 	/**
 	 * Sets filter for server-side column data filtering.
 	 * 
-	 * @param filterExpression SQL expression for server-side column data filtering
+	 * @param filter SQL expression for server-side column data filtering
 	 *        or <code>null</code>, if no filter is defined for this column
 	 */
 	public void setFilter(Filter filter) {

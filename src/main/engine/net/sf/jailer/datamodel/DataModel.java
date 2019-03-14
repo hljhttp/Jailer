@@ -42,6 +42,7 @@ import java.util.SortedSet;
 import java.util.TreeMap;
 import java.util.TreeSet;
 
+import net.sf.jailer.Singleton;
 import org.apache.log4j.Logger;
 
 import net.sf.jailer.ExecutionContext;
@@ -59,6 +60,12 @@ import net.sf.jailer.util.CsvFile.LineFilter;
 import net.sf.jailer.util.PrintUtil;
 import net.sf.jailer.util.Quoting;
 import net.sf.jailer.util.SqlUtil;
+import org.dizitart.no2.Cursor;
+import org.dizitart.no2.Document;
+import org.dizitart.no2.Nitrite;
+import org.dizitart.no2.NitriteCollection;
+
+import static org.dizitart.no2.filters.Filters.eq;
 
 /**
  * Relational data model.
@@ -120,7 +127,7 @@ public class DataModel {
 	/**
 	 * The execution context.
 	 */
-	private final ExecutionContext executionContext;
+	public final ExecutionContext executionContext;
 	
 	/**
 	 * Default model name.
@@ -301,7 +308,7 @@ public class DataModel {
 	/**
 	 * Reads in <code>table.csv</code> and <code>association.csv</code>
 	 * and builds the relational data model.
-	 * @param knownIdentifiers 
+	 * @param executionContext
 	 */
 	public DataModel(ExecutionContext executionContext) throws IOException {
 		this(null, null, new HashMap<String, String>(), null, new PrimaryKeyFactory(executionContext), executionContext, false, null);
@@ -381,6 +388,8 @@ public class DataModel {
 		this.executionContext = executionContext;
 		this.primaryKeyFactory = primaryKeyFactory;
 		try {
+			//todo create db
+			Singleton.getInstance().CREATE_DB(executionContext);
 			List<String> excludeFromDeletion = new ArrayList<String>();
 			PrintUtil.loadTableList(excludeFromDeletion, openModelFile(new File(DataModel.getExcludeFromDeletionFile(executionContext)), executionContext));
 
@@ -625,6 +634,10 @@ public class DataModel {
 	private void initDisplayNames() throws IOException {
 		Set<String> unqualifiedNames = new HashSet<String>();
 		Set<String> nonUniqueUnqualifiedNames = new HashSet<String>();
+
+		// todo hlj add displayname
+		Nitrite db = Singleton.getInstance().DB();
+		NitriteCollection tablesMap = db.getCollection("tablesMap");
 		
 		for (Table table: getTables()) {
 			String uName = table.getUnqualifiedName();
@@ -652,6 +665,12 @@ public class DataModel {
 				displayName = uName + " (" + schema + ")";
 			} else {
 				displayName = uName;
+			}
+			String tName = table.getName();
+			Document document = tablesMap.find(eq("table_name", tName)).firstOrDefault();
+			if(document != null)
+			{
+				displayName = displayName + document.get("comments").toString();
 			}
 			this.displayName.put(table, displayName);
 			tablesByDisplayName.put(displayName, table);
@@ -897,7 +916,7 @@ public class DataModel {
 	 * Checks whether all tables in the closure of a given subject have primary keys.
 	 * @param hasRowID 
 	 * 
-	 * @param subject the subject
+	 * @param subjects the subject
 	 * @throws NoPrimaryKeyException if a table has no primary key
 	 */
 	public Set<Table> checkForPrimaryKey(Set<Table> subjects, boolean hasRowID) throws NoPrimaryKeyException {
