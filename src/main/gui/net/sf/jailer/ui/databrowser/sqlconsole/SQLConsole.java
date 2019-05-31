@@ -1846,8 +1846,8 @@ public abstract class SQLConsole extends javax.swing.JPanel {
      * 
      * @param sql the statement
      * @param execute execute the statement?
-     * @param useLineContinuation 
-     * @param tabContentPanel 
+     * @paramd duseLineContinuation
+     * @paramd tabContentPanel
      */
     public void appendStatement(String sql, boolean execute) {
     	appendStatement(sql, execute, null, false);
