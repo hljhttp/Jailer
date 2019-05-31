@@ -60,6 +60,7 @@ import javax.swing.JMenuItem;
 import javax.swing.JPopupMenu;
 import javax.swing.JSeparator;
 import javax.swing.JTable;
+import javax.swing.JToggleButton;
 import javax.swing.SwingUtilities;
 import javax.swing.border.BevelBorder;
 import javax.swing.table.DefaultTableModel;
@@ -70,11 +71,10 @@ import net.sf.jailer.datamodel.Association;
 import net.sf.jailer.datamodel.DataModel;
 import net.sf.jailer.datamodel.Table;
 import net.sf.jailer.ui.AutoCompletion;
-import net.sf.jailer.ui.ClosureView;
 import net.sf.jailer.ui.JComboBox;
 import net.sf.jailer.ui.StringSearchPanel;
-import net.sf.jailer.ui.UIUtil;
 import net.sf.jailer.ui.StringSearchPanel.AdditionalComponentFactory;
+import net.sf.jailer.ui.UIUtil;
 import net.sf.jailer.ui.databrowser.Desktop.RowBrowser;
 import net.sf.jailer.ui.pathfinder.HistoryPanel;
 import net.sf.jailer.ui.pathfinder.PathFinder;
@@ -437,12 +437,13 @@ public abstract class DBClosureView extends javax.swing.JDialog {
         GridBagConstraints gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 1;
         gridBagConstraints.gridy = 20;
-        JButton searchButton = StringSearchPanel.createSearchButton(this.parent, searchComboBox, "Find Table", new Runnable() {
-            @Override
-            public void run() {
-                findButtonActionPerformed(null);
-            }
-        });
+		final javax.swing.JComboBox comboBox = searchComboBox;
+        JToggleButton searchButton = StringSearchPanel.createSearchButton(this.parent, comboBox, "Find Table", new Runnable() {
+		    @Override
+		    public void run() {
+		        findButtonActionPerformed(null);
+		    }
+		}, null, null, null, false, null, false);
         tablePanel.add(searchButton, gridBagConstraints);
         
         searchComboBox.setVisible(false);
@@ -467,7 +468,7 @@ public abstract class DBClosureView extends javax.swing.JDialog {
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 2;
         gridBagConstraints.gridy = 20;
-		JButton stFindPathButton = StringSearchPanel.createSearchButton(
+		JToggleButton stFindPathButton = StringSearchPanel.createSearchButton(
 				this.parent, findPathComboBox, 
 				new Object() {
 					public String toString() {
@@ -504,7 +505,7 @@ public abstract class DBClosureView extends javax.swing.JDialog {
 				};
 		        return historyPanel;
 			}
-		});
+		}, false);
 		tablePanel.add(stFindPathButton, gridBagConstraints);
         
         findPathComboBox.setVisible(false);
@@ -679,6 +680,10 @@ public abstract class DBClosureView extends javax.swing.JDialog {
         setLocation(100, 100);
         setSize(500, 500);
         setAlwaysOnTop(true);
+
+        jLabel7.setVisible(false);
+        jLabel8.setVisible(false);
+        jLabel9.setVisible(false);
     }
 
 	protected String toolTip(String tableName, CellInfo theCellInfo) {

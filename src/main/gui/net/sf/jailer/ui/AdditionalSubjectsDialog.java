@@ -197,8 +197,8 @@ public class AdditionalSubjectsDialog extends javax.swing.JDialog {
 				}
 				String cond = conditionEditor.edit(detailsCondtition.getText(), "Subject", "T", table, null, null, null, false, true);
 				if (cond != null) {
-					if (!detailsCondtition.getText().equals(ConditionEditor.toSingleLine(cond))) {
-						detailsCondtition.setText(ConditionEditor.toSingleLine(cond));
+					if (!detailsCondtition.getText().equals((cond))) {
+						detailsCondtition.setText((cond));
 					}
 					detailsLabel.setIcon(conditionEditorIcon);
 				}
@@ -264,7 +264,12 @@ public class AdditionalSubjectsDialog extends javax.swing.JDialog {
 			isolated.add(sub);
 		}
 
-		Set<Table> closure = subject.closure(true);
+		Set<Table> closure;
+		if (subject != null) {
+			closure = subject.closure(true);
+		} else {
+			closure = new HashSet<Table>();
+		}
 
 		remainingIsolated.clear();
 		remainingIsolated.addAll(remaining);

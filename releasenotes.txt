@@ -1,3 +1,21 @@
+8.7.1
+  - SQL Console is now robust against outdated metadata.
+
+8.7
+  - Modal dialogues were replaced by non-modal ones.
+  - Creation of the data model files has been revised.
+  - Execution plans for DB2 LUW.
+  - Fixed "ERROR: failed to find conversion function from unknown to text"
+    that could occur with PostgreSQL in connection with the "local database" scope. 
+
+8.6
+  - The data browser automatically reconnects when the connection is lost.
+  - Minor bug fixes.
+
+8.5.4
+  - The table from which the navigation starts can now be changed at any time in the data browser.
+  - Improved data browser performance.
+
 8.5.3
   - Column order in the display can be defined not only globally but also for each table.
 

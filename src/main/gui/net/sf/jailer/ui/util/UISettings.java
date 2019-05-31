@@ -20,9 +20,13 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
+import net.sf.jailer.datamodel.DataModel;
+import net.sf.jailer.datamodel.Table;
 import net.sf.jailer.ui.Environment;
 
 /**
@@ -48,7 +52,7 @@ public class UISettings  {
 	private static final String FILENAME = ".uisettings";
 
 	@SuppressWarnings("unchecked")
-	private static void loadUISettings() {
+	private static synchronized void loadUISettings() {
 		if (properties == null) {
 			properties = new HashMap<String, Object>();
 			File file = Environment.newFile(FILENAME);
@@ -74,13 +78,6 @@ public class UISettings  {
 		loadUISettings();
 		properties.put(name, value);
 		File file = Environment.newFile(FILENAME);
-		if (file.exists()) {
-			try {
-				file.delete();
-			} catch (Exception e) {
-				e.printStackTrace();
-			}
-		}
 		try {
 			ObjectOutputStream out = new ObjectOutputStream(new FileOutputStream(file));
 			out.writeObject(properties);
@@ -101,6 +98,7 @@ public class UISettings  {
 	}
 
 	public static int s1, s2, s3, s4, s5, s6, s7, s8, s9;
+	public static String s10;
 	
 	public synchronized static void storeStats() {
 		int i = 1;
@@ -111,15 +109,39 @@ public class UISettings  {
 			}
 			++i;
 		}
+		if (s10 != null) {
+			sb.append("&s10=" + s10);
+		}
 		store("stats", sb.toString());
 	}
-	
+
 	public synchronized static String restoreStats() {
 		Object stats = restore("stats");
 		if (stats != null) {
+			store("stats", null);
 			return stats.toString();
 		}
 		return "";
+	}
+
+	public static void dmStats(DataModel dataModel) {
+		if (dataModel != null) {
+			s1 = Math.max(UISettings.s1, dataModel.getTables().size());
+			ArrayList<Integer> nc = new ArrayList<Integer>();
+			int numA = 0;
+			for (Table table: dataModel.getTables()) {
+				nc.add(table.getColumns().size());
+				if (table.associations != null) {
+					numA += table.associations.size();
+				}
+			}
+			if (!nc.isEmpty()) {
+				Collections.sort(nc);
+				int mid = Math.min(Math.max(nc.size() / 2, 0), nc.size() - 1);
+				s8 = Math.min(nc.get(mid), 999) + 1000 * nc.get(nc.size() - 1);
+				s5 = (s5 % 1000) + 1000 * (numA / 2);
+			}
+		}
 	}
 
 }

@@ -238,7 +238,7 @@ public class DataBrowser extends javax.swing.JFrame {
         UpdateInfoManager.checkUpdateAvailability(updateInfoPanel, updateInfoLabel, downloadMenuItem, "B");
 		UIUtil.initPLAFMenuItem(nativeLAFCheckBoxMenuItem, this);
 		if (datamodel != null) {
-			UISettings.s1 = Math.max(UISettings.s1, datamodel.getTables().size());
+			UISettings.dmStats(datamodel);
 		}
 		initRowLimitButtons();
         autoLayoutMenuItem.setSelected(inAutoLayoutMode());
@@ -293,7 +293,7 @@ public class DataBrowser extends javax.swing.JFrame {
         gridBagConstraints.gridy = 1;
         gridBagConstraints.fill = java.awt.GridBagConstraints.NONE;
         gridBagConstraints.weightx = 0;
-        JButton searchButton = StringSearchPanel.createSearchButton(this, tablesComboBox, "Open Table Browser", new Runnable() {
+        searchButton = StringSearchPanel.createSearchButton(this, tablesComboBox, "Open Table Browser", new Runnable() {
 			@Override
 			public void run() {
 				openTableButtonActionPerformed(null);
@@ -545,6 +545,9 @@ public class DataBrowser extends javax.swing.JFrame {
 
         if (dbConnectionDialog != null) {
             createSession(dbConnectionDialog);
+            if (session == null) {
+            	return;
+            }
         }
         desktop = new Desktop(this.datamodel, jailerIcon, session, this, dbConnectionDialog, anchorManager, executionContext) {
             @Override
@@ -564,6 +567,8 @@ public class DataBrowser extends javax.swing.JFrame {
 
             @Override
             protected void updateMenu(LayoutMode layoutMode) {
+            	zoomInMenuItem.setEnabled(layoutMode != Desktop.LayoutMode.LARGE);
+            	zoomOutMenuItem.setEnabled(layoutMode != Desktop.LayoutMode.THUMBNAIL);
             	tinyLayoutRadioButtonMenuItem.setSelected(layoutMode == Desktop.LayoutMode.TINY);
             	smallLayoutRadioButtonMenuItem.setSelected(layoutMode == Desktop.LayoutMode.SMALL);
             	mediumLayoutRadioButtonMenuItem.setSelected(layoutMode == Desktop.LayoutMode.MEDIUM);
@@ -813,7 +818,7 @@ public class DataBrowser extends javax.swing.JFrame {
         UIUtil.fit(this);
         
         if (root != null) {
-            final RowBrowser rb = desktop.addTableBrowser(null, null, 0, root, null, condition, null, true);
+            final RowBrowser rb = desktop.addTableBrowser(null, null, 0, root, null, condition, null, null, true);
             if (rb != null && rb.internalFrame != null) {
                 UIUtil.invokeLater(10, new Runnable() {
                     @Override
@@ -944,18 +949,19 @@ public class DataBrowser extends javax.swing.JFrame {
 	}
 
     private void createSession(DbConnectionDialog dbConnectionDialog) throws Exception {
-        if (session != null) {
-            try {
-                session.shutDown();
-                session = null;
-            } catch (Exception e) {
-                // ignore
-            }
-        }
         ConnectionInfo connection = dbConnectionDialog.currentConnection;
         BasicDataSource dataSource = new BasicDataSource(connection.driverClass, connection.url, connection.user, connection.password, 0, dbConnectionDialog.currentJarURLs());
-        session = SessionForUI.createSession(dataSource, dataSource.dbms, executionContext.getIsolationLevel(), this);
-        if (session != null) {
+        SessionForUI newSession = SessionForUI.createSession(dataSource, dataSource.dbms, executionContext.getIsolationLevel(), this);
+        if (newSession != null) {
+            if (session != null) {
+                try {
+                    session.shutDown();
+                    session = null;
+                } catch (Exception e) {
+                    // ignore
+                }
+            }
+        	session = newSession;
 	        List<String> args = new ArrayList<String>();
 	        dbConnectionDialog.addDbArgs(args);
 	        session.setCliArguments(args);
@@ -1172,6 +1178,9 @@ public class DataBrowser extends javax.swing.JFrame {
         layoutMenuItem = new javax.swing.JMenuItem();
         autoLayoutMenuItem = new javax.swing.JCheckBoxMenuItem();
         jSeparator5 = new javax.swing.JPopupMenu.Separator();
+        zoomInMenuItem = new javax.swing.JMenuItem();
+        zoomOutMenuItem = new javax.swing.JMenuItem();
+        jSeparator15 = new javax.swing.JPopupMenu.Separator();
         thumbnailLayoutRadioButtonMenuItem = new javax.swing.JRadioButtonMenuItem();
         tinyLayoutRadioButtonMenuItem = new javax.swing.JRadioButtonMenuItem();
         smallLayoutRadioButtonMenuItem = new javax.swing.JRadioButtonMenuItem();
@@ -1910,6 +1919,25 @@ public class DataBrowser extends javax.swing.JFrame {
         menuWindow.add(autoLayoutMenuItem);
         menuWindow.add(jSeparator5);
 
+        zoomInMenuItem.setAccelerator(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_PLUS, java.awt.event.InputEvent.CTRL_MASK));
+        zoomInMenuItem.setText("Zoom In (Mouse Wheel Up)");
+        zoomInMenuItem.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                zoomInMenuItemActionPerformed(evt);
+            }
+        });
+        menuWindow.add(zoomInMenuItem);
+
+        zoomOutMenuItem.setAccelerator(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_MINUS, java.awt.event.InputEvent.CTRL_MASK));
+        zoomOutMenuItem.setText("Zoom Out (Mouse Wheel Down)");
+        zoomOutMenuItem.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                zoomOutMenuItemActionPerformed(evt);
+            }
+        });
+        menuWindow.add(zoomOutMenuItem);
+        menuWindow.add(jSeparator15);
+
         thumbnailLayoutRadioButtonMenuItem.setAccelerator(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_0, java.awt.event.InputEvent.CTRL_MASK));
         thumbnailLayoutRadioButtonMenuItem.setText("Thumbnail Layout");
         thumbnailLayoutRadioButtonMenuItem.addActionListener(new java.awt.event.ActionListener() {
@@ -2068,7 +2096,7 @@ public class DataBrowser extends javax.swing.JFrame {
     private void openTableButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_openTableButtonActionPerformed
     	if (tablesComboBox.getSelectedItem() != null) {
     		String tableName = tablesComboBox.getSelectedItem().toString();
-    		desktop.addTableBrowser(null, null, 0, datamodel.get().getTableByDisplayName(tableName), null, "", null, true);
+    		desktop.addTableBrowser(null, null, 0, datamodel.get().getTableByDisplayName(tableName), null, "", null, null, true);
     		switchToDesktop();
     	}
     }//GEN-LAST:event_openTableButtonActionPerformed
@@ -2118,7 +2146,7 @@ public class DataBrowser extends javax.swing.JFrame {
 			@Override
 			protected void openTableBrowser(Table source, String where) {
 				workbenchTabbedPane.setSelectedComponent(desktopSplitPane);
-	    		desktop.addTableBrowser(null, null, 0, source, null, new BasicFormatterImpl().format(where), null, true);
+	    		desktop.addTableBrowser(null, null, 0, source, null, new BasicFormatterImpl().format(where), null, null, true);
 			}
 
 			@Override
@@ -2249,7 +2277,7 @@ public class DataBrowser extends javax.swing.JFrame {
                     if (popup != null) {
                         JPopupMenu popup2 = rowBrowser.browserContentPane.createSqlPopupMenu(null, -1, 0, 0, true, navigationTreeScrollPane);
                         if (popup2.getComponentCount() > 0 && popup.getComponentCount() > 0) {
-	                        popup.add(new JSeparator());
+	                        // popup.add(new JSeparator());
 	                    }
                         for (Component c : popup2.getComponents()) {
                             popup.add(c);
@@ -2291,7 +2319,7 @@ public class DataBrowser extends javax.swing.JFrame {
         new NewTableBrowser(this, datamodel.get(), offerAlternatives) {
             @Override
             void openTableBrowser(String tableName) {
-                desktop.addTableBrowser(null, null, 0, datamodel.get().getTableByDisplayName(tableName), null, "", null, true);
+                desktop.addTableBrowser(null, null, 0, datamodel.get().getTableByDisplayName(tableName), null, "", null, null, true);
         		switchToDesktop();
            }
 
@@ -2344,7 +2372,8 @@ public class DataBrowser extends javax.swing.JFrame {
         try {
             start(args);
         } catch (Throwable t) {
-            UIUtil.showException(null, "Error", t);
+        	t.printStackTrace();
+        	UIUtil.showException(null, "Error", t);
         }
     }
     
@@ -2356,6 +2385,7 @@ public class DataBrowser extends javax.swing.JFrame {
         try {
         	Environment.init();
         } catch (Throwable e) {
+        	e.printStackTrace();
 			UIUtil.showException(null, "Error", e);
 			return;
 		}
@@ -2369,6 +2399,7 @@ public class DataBrowser extends javax.swing.JFrame {
         try {
             CommandLineInstance.init(args);
         } catch (Exception e) {
+        	e.printStackTrace();
             UIUtil.showException(null, "Illegal arguments", e);
             return;
         }
@@ -2654,6 +2685,7 @@ public class DataBrowser extends javax.swing.JFrame {
     private javax.swing.JPopupMenu.Separator jSeparator12;
     private javax.swing.JPopupMenu.Separator jSeparator13;
     private javax.swing.JPopupMenu.Separator jSeparator14;
+    private javax.swing.JPopupMenu.Separator jSeparator15;
     private javax.swing.JPopupMenu.Separator jSeparator2;
     private javax.swing.JPopupMenu.Separator jSeparator3;
     private javax.swing.JPopupMenu.Separator jSeparator4;
@@ -2707,8 +2739,12 @@ public class DataBrowser extends javax.swing.JFrame {
     private javax.swing.JPanel updateInfoPanel;
     private javax.swing.JMenu view;
     private javax.swing.JTabbedPane workbenchTabbedPane;
+    private javax.swing.JMenuItem zoomInMenuItem;
+    private javax.swing.JMenuItem zoomOutMenuItem;
     // End of variables declaration//GEN-END:variables
 
+    private JToggleButton searchButton;
+    
     /**
      * Sets Look&Feel.
      * 
@@ -3012,7 +3048,7 @@ public class DataBrowser extends javax.swing.JFrame {
             for (AssociationModel a : selection) {
                 BrowserAssociationModel associationModel = (BrowserAssociationModel) a;
                 desktop.addTableBrowser(associationModel.getRowBrowser(), associationModel.getRowBrowser(), -1, associationModel.getAssociation().destination, associationModel.getAssociation(),
-                        "", null, true);
+                        "", null, null, true);
             }
             if (currentSelection != null) {
                 try {
@@ -3122,7 +3158,7 @@ public class DataBrowser extends javax.swing.JFrame {
                             }
                             return;
                         } else {
-                            openNewTableBrowser(false);
+                            searchButton.doClick(1);
                         }
                     }
                 }
@@ -3347,7 +3383,7 @@ public class DataBrowser extends javax.swing.JFrame {
     private Runnable createMetaDataPanel;
 
     private void onNewSession(Session newSession) {
-    	if (session == null) {
+    	if (newSession == null) {
     		return;
     	}
 
@@ -3421,7 +3457,7 @@ public class DataBrowser extends javax.swing.JFrame {
 							protected void open(Table table) {
 								if (!selectNavTreeNode(navigationTree.getModel().getRoot(), table)) {
 									if (workbenchTabbedPane.getSelectedComponent() != getCurrentSQLConsole()) {
-										desktop.addTableBrowser(null, null, 0, table, null, "", null, true);
+										desktop.addTableBrowser(null, null, 0, table, null, "", null, null, true);
 									}
 								}
 								try {
@@ -3900,6 +3936,14 @@ public class DataBrowser extends javax.swing.JFrame {
         UpdateInfoManager.download();
     }//GEN-LAST:event_downloadMenuItemActionPerformed
 
+    private void zoomInMenuItemActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_zoomInMenuItemActionPerformed
+        desktop.zoom(1);
+    }//GEN-LAST:event_zoomInMenuItemActionPerformed
+
+    private void zoomOutMenuItemActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_zoomOutMenuItemActionPerformed
+        desktop.zoom(-1);
+    }//GEN-LAST:event_zoomOutMenuItemActionPerformed
+
 	private MetaDataDetailsPanel metaDataDetailsPanel;
 	private List<SQLConsoleWithTitle> sqlConsoles = new ArrayList<SQLConsoleWithTitle>();
 
@@ -3970,6 +4014,10 @@ public class DataBrowser extends javax.swing.JFrame {
 			}
 
 		});
+	}
+	
+	public boolean isReady() {
+		return session != null;
 	}
 	
 	private DesktopAnchorManager anchorManager; 

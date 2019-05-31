@@ -15,13 +15,17 @@
  */
 package net.sf.jailer.ui;
 
-import java.awt.Color;
+import java.awt.Dialog;
 import java.awt.Dimension;
 import java.awt.GridBagConstraints;
 import java.awt.Point;
 import java.awt.Toolkit;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.ComponentEvent;
+import java.awt.event.ComponentListener;
+import java.awt.event.WindowEvent;
+import java.awt.event.WindowFocusListener;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
@@ -30,8 +34,10 @@ import java.util.regex.Pattern;
 
 import javax.swing.Icon;
 import javax.swing.ImageIcon;
+import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JMenuItem;
+import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
 import javax.swing.JScrollPane;
 import javax.swing.JSeparator;
@@ -48,6 +54,7 @@ import net.sf.jailer.ui.syntaxtextarea.DataModelBasedSQLCompletionProvider;
 import net.sf.jailer.ui.syntaxtextarea.RSyntaxTextAreaWithSQLSyntaxStyle;
 import net.sf.jailer.ui.syntaxtextarea.SQLAutoCompletion;
 import net.sf.jailer.ui.syntaxtextarea.SQLCompletionProvider;
+import net.sf.jailer.ui.util.SizeGrip;
 import net.sf.jailer.util.SqlUtil;
 
 /**
@@ -55,16 +62,59 @@ import net.sf.jailer.util.SqlUtil;
  * 
  * @author Ralf Wisser
  */
-public class ConditionEditor extends EscapableDialog {
+public abstract class NonModalConditionEditor extends EscapableDialog {
 
 	private boolean ok;
 	private ParameterSelector parameterSelector;
 	private DataModelBasedSQLCompletionProvider provider;
 
 	/** Creates new form ConditionEditor */
-	public ConditionEditor(java.awt.Frame parent, ParameterSelector.ParametersGetter parametersGetter, DataModel dataModel) {
-		super(parent, true);
+	public NonModalConditionEditor(java.awt.Frame parent, ParameterSelector.ParametersGetter parametersGetter, DataModel dataModel) {
+		super(parent, false);
+		init(parametersGetter, dataModel);
+	}
+
+	/** Creates new form ConditionEditor */
+	public NonModalConditionEditor(Dialog parent, ParameterSelector.ParametersGetter parametersGetter, DataModel dataModel) {
+		super(parent, false);
+		init(parametersGetter, dataModel);
+	}
+
+	private void init(ParameterSelector.ParametersGetter parametersGetter, DataModel dataModel) {
+		setUndecorated(true);
 		initComponents();
+		
+		addWindowFocusListener(new WindowFocusListener() {
+			@Override
+			public void windowLostFocus(WindowEvent e) {
+				if (parameterSelector != null && !parameterSelector.hasOpenDialog()) {
+					setVisible(false);
+				}
+			}
+			@Override
+			public void windowGainedFocus(WindowEvent e) {
+			}
+		});
+		
+		addComponentListener(new ComponentListener() {
+			@Override
+			public void componentShown(ComponentEvent e) {
+			}
+			@Override
+			public void componentResized(ComponentEvent e) {
+			}
+			@Override
+			public void componentMoved(ComponentEvent e) {
+			}
+			@Override
+			public void componentHidden(ComponentEvent e) {
+				if (ok && initialCondition.equals(editorPane.getText())) {
+					ok = false;
+				}
+				consume(ok? removeSingleLineComments(editorPane.getText()).replaceAll("\\n(\\r?) *", " ").replace('\n', ' ').replace('\r', ' ') : null);
+			}
+		});
+
 		this.editorPane = new RSyntaxTextAreaWithSQLSyntaxStyle(false, false) {
 			@Override
 			protected void runBlock() {
@@ -75,17 +125,10 @@ public class ConditionEditor extends EscapableDialog {
 		JScrollPane jScrollPane2 = new JScrollPane();
 		jScrollPane2.setViewportView(editorPane);
 		
+		JPanel corner = new SizeGrip();
+		gripPanel.add(corner);
+
 		GridBagConstraints gridBagConstraints = new java.awt.GridBagConstraints();
-		gridBagConstraints.gridx = 10;
-		gridBagConstraints.gridy = 9;
-		gridBagConstraints.fill = java.awt.GridBagConstraints.BOTH;
-		gridBagConstraints.weightx = 1.0;
-		gridBagConstraints.weighty = 0;
-		JLabel where = new JLabel(" Where");
-		where.setForeground(new Color(0, 0, 255));
-		jPanel1.add(where, gridBagConstraints);
-		
-		gridBagConstraints = new java.awt.GridBagConstraints();
 		gridBagConstraints.gridx = 10;
 		gridBagConstraints.gridy = 10;
 		gridBagConstraints.fill = java.awt.GridBagConstraints.BOTH;
@@ -104,7 +147,7 @@ public class ConditionEditor extends EscapableDialog {
 		}
 		
 		setLocation(400, 150);
-		setSize(600, 400);
+		setSize(440, 200);
 		
 		if (parametersGetter != null) {
 			paramsPanel.add(parameterSelector = new ParameterSelector(this, editorPane, parametersGetter));
@@ -197,22 +240,31 @@ public class ConditionEditor extends EscapableDialog {
     private void initComponents() {
         java.awt.GridBagConstraints gridBagConstraints;
 
+        cancelButton = new javax.swing.JButton();
         jPanel1 = new javax.swing.JPanel();
         paramsPanel = new javax.swing.JPanel();
         jPanel2 = new javax.swing.JPanel();
+        addOnPanel = new javax.swing.JPanel();
+        jPanel3 = new javax.swing.JPanel();
+        okButton = new javax.swing.JButton();
+        jPanel5 = new javax.swing.JPanel();
         table1label = new javax.swing.JLabel();
         table1name = new javax.swing.JLabel();
         table1dropDown = new javax.swing.JLabel();
-        jLabel1 = new javax.swing.JLabel();
         table2label = new javax.swing.JLabel();
         table2name = new javax.swing.JLabel();
         table2dropDown = new javax.swing.JLabel();
-        addOnPanel = new javax.swing.JPanel();
         toSubQueryButton = new javax.swing.JButton();
-        jPanel3 = new javax.swing.JPanel();
-        okButton = new javax.swing.JButton();
-        cancelButton = new javax.swing.JButton();
+        jPanel4 = new javax.swing.JPanel();
         jLabel2 = new javax.swing.JLabel();
+        gripPanel = new javax.swing.JPanel();
+
+        cancelButton.setText(" Cancel ");
+        cancelButton.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                cancelButtonActionPerformed(evt);
+            }
+        });
 
         setDefaultCloseOperation(javax.swing.WindowConstants.DISPOSE_ON_CLOSE);
         getContentPane().setLayout(new java.awt.GridBagLayout());
@@ -230,86 +282,13 @@ public class ConditionEditor extends EscapableDialog {
 
         jPanel2.setLayout(new java.awt.GridBagLayout());
 
-        table1label.setText(" Table ");
-        gridBagConstraints = new java.awt.GridBagConstraints();
-        gridBagConstraints.gridx = 1;
-        gridBagConstraints.gridy = 1;
-        gridBagConstraints.anchor = java.awt.GridBagConstraints.WEST;
-        gridBagConstraints.insets = new java.awt.Insets(4, 0, 3, 0);
-        jPanel2.add(table1label, gridBagConstraints);
-
-        table1name.setFont(new java.awt.Font("DejaVu Sans", 0, 12)); // NOI18N
-        table1name.setText("jLabel1");
-        gridBagConstraints = new java.awt.GridBagConstraints();
-        gridBagConstraints.gridx = 3;
-        gridBagConstraints.gridy = 1;
-        gridBagConstraints.anchor = java.awt.GridBagConstraints.WEST;
-        gridBagConstraints.insets = new java.awt.Insets(4, 0, 3, 0);
-        jPanel2.add(table1name, gridBagConstraints);
-
-        table1dropDown.setFont(new java.awt.Font("DejaVu Sans", 0, 12)); // NOI18N
-        table1dropDown.setText("jLabel1");
-        gridBagConstraints = new java.awt.GridBagConstraints();
-        gridBagConstraints.gridx = 2;
-        gridBagConstraints.gridy = 1;
-        gridBagConstraints.anchor = java.awt.GridBagConstraints.WEST;
-        gridBagConstraints.insets = new java.awt.Insets(4, 0, 3, 0);
-        jPanel2.add(table1dropDown, gridBagConstraints);
-
-        jLabel1.setText(" ");
-        gridBagConstraints = new java.awt.GridBagConstraints();
-        gridBagConstraints.gridx = 10;
-        gridBagConstraints.gridy = 1;
-        gridBagConstraints.weightx = 1.0;
-        jPanel2.add(jLabel1, gridBagConstraints);
-
-        table2label.setText("jLabel2");
-        gridBagConstraints = new java.awt.GridBagConstraints();
-        gridBagConstraints.gridx = 1;
-        gridBagConstraints.gridy = 2;
-        gridBagConstraints.anchor = java.awt.GridBagConstraints.WEST;
-        gridBagConstraints.insets = new java.awt.Insets(0, 0, 4, 0);
-        jPanel2.add(table2label, gridBagConstraints);
-
-        table2name.setFont(new java.awt.Font("DejaVu Sans", 0, 12)); // NOI18N
-        table2name.setText("jLabel2");
-        gridBagConstraints = new java.awt.GridBagConstraints();
-        gridBagConstraints.gridx = 3;
-        gridBagConstraints.gridy = 2;
-        gridBagConstraints.anchor = java.awt.GridBagConstraints.WEST;
-        gridBagConstraints.insets = new java.awt.Insets(0, 0, 4, 0);
-        jPanel2.add(table2name, gridBagConstraints);
-
-        table2dropDown.setFont(new java.awt.Font("DejaVu Sans", 0, 12)); // NOI18N
-        table2dropDown.setText("jLabel2");
-        gridBagConstraints = new java.awt.GridBagConstraints();
-        gridBagConstraints.gridx = 2;
-        gridBagConstraints.gridy = 2;
-        gridBagConstraints.anchor = java.awt.GridBagConstraints.WEST;
-        gridBagConstraints.insets = new java.awt.Insets(0, 0, 4, 0);
-        jPanel2.add(table2dropDown, gridBagConstraints);
+        addOnPanel.setLayout(new java.awt.FlowLayout(java.awt.FlowLayout.CENTER, 0, 0));
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 2;
         gridBagConstraints.gridy = 12;
         gridBagConstraints.gridwidth = 2;
         gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
         jPanel2.add(addOnPanel, gridBagConstraints);
-
-        toSubQueryButton.setText("Convert to Subquery");
-        toSubQueryButton.setToolTipText("<html>Converts condition into a subquery.<br> This allows to add joins with related tables or limiting clauses etc. </html>");
-        toSubQueryButton.addActionListener(new java.awt.event.ActionListener() {
-            public void actionPerformed(java.awt.event.ActionEvent evt) {
-                toSubQueryButtonActionPerformed(evt);
-            }
-        });
-        gridBagConstraints = new java.awt.GridBagConstraints();
-        gridBagConstraints.gridx = 10;
-        gridBagConstraints.gridy = 1;
-        gridBagConstraints.gridwidth = 2;
-        gridBagConstraints.gridheight = 2;
-        gridBagConstraints.anchor = java.awt.GridBagConstraints.SOUTHEAST;
-        gridBagConstraints.insets = new java.awt.Insets(0, 4, 0, 4);
-        jPanel2.add(toSubQueryButton, gridBagConstraints);
 
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 10;
@@ -318,37 +297,126 @@ public class ConditionEditor extends EscapableDialog {
         gridBagConstraints.fill = java.awt.GridBagConstraints.BOTH;
         jPanel1.add(jPanel2, gridBagConstraints);
 
-        okButton.setText(" Ok ");
+        jPanel3.setLayout(new java.awt.GridBagLayout());
+
+        okButton.setText("    Ok    ");
         okButton.addActionListener(new java.awt.event.ActionListener() {
             public void actionPerformed(java.awt.event.ActionEvent evt) {
                 okButtonActionPerformed(evt);
             }
         });
-        jPanel3.add(okButton);
-
-        cancelButton.setText(" Cancel ");
-        cancelButton.addActionListener(new java.awt.event.ActionListener() {
-            public void actionPerformed(java.awt.event.ActionEvent evt) {
-                cancelButtonActionPerformed(evt);
-            }
-        });
-        jPanel3.add(cancelButton);
-
         gridBagConstraints = new java.awt.GridBagConstraints();
-        gridBagConstraints.gridx = 10;
-        gridBagConstraints.gridy = 20;
-        gridBagConstraints.gridwidth = 20;
-        gridBagConstraints.anchor = java.awt.GridBagConstraints.EAST;
-        jPanel1.add(jPanel3, gridBagConstraints);
+        gridBagConstraints.gridx = 1;
+        gridBagConstraints.gridy = 1;
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.SOUTHWEST;
+        gridBagConstraints.weightx = 1.0;
+        jPanel3.add(okButton, gridBagConstraints);
 
-        jLabel2.setForeground(new java.awt.Color(128, 128, 128));
-        jLabel2.setText(" ctrl-space for code completion");
+        jPanel5.setLayout(new java.awt.GridBagLayout());
+
+        table1label.setText(" Table ");
         gridBagConstraints = new java.awt.GridBagConstraints();
-        gridBagConstraints.gridx = 10;
-        gridBagConstraints.gridy = 20;
+        gridBagConstraints.gridx = 1;
+        gridBagConstraints.gridy = 1;
+        gridBagConstraints.insets = new java.awt.Insets(0, 12, 0, 0);
+        jPanel5.add(table1label, gridBagConstraints);
+
+        table1name.setFont(new java.awt.Font("DejaVu Sans", 0, 12)); // NOI18N
+        table1name.setText("jLabel1");
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 3;
+        gridBagConstraints.gridy = 1;
         gridBagConstraints.anchor = java.awt.GridBagConstraints.WEST;
         gridBagConstraints.weightx = 1.0;
-        jPanel1.add(jLabel2, gridBagConstraints);
+        jPanel5.add(table1name, gridBagConstraints);
+
+        table1dropDown.setFont(new java.awt.Font("DejaVu Sans", 0, 12)); // NOI18N
+        table1dropDown.setText("jLabel1");
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 2;
+        gridBagConstraints.gridy = 1;
+        jPanel5.add(table1dropDown, gridBagConstraints);
+
+        table2label.setText("jLabel2");
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 1;
+        gridBagConstraints.gridy = 2;
+        gridBagConstraints.insets = new java.awt.Insets(0, 12, 0, 0);
+        jPanel5.add(table2label, gridBagConstraints);
+
+        table2name.setFont(new java.awt.Font("DejaVu Sans", 0, 12)); // NOI18N
+        table2name.setText("jLabel2");
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 3;
+        gridBagConstraints.gridy = 2;
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.WEST;
+        gridBagConstraints.weightx = 1.0;
+        jPanel5.add(table2name, gridBagConstraints);
+
+        table2dropDown.setFont(new java.awt.Font("DejaVu Sans", 0, 12)); // NOI18N
+        table2dropDown.setText("jLabel2");
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 2;
+        gridBagConstraints.gridy = 2;
+        jPanel5.add(table2dropDown, gridBagConstraints);
+
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 6;
+        gridBagConstraints.gridy = 1;
+        gridBagConstraints.insets = new java.awt.Insets(0, 0, 0, 8);
+        jPanel3.add(jPanel5, gridBagConstraints);
+
+        toSubQueryButton.setText("to Subquery");
+        toSubQueryButton.setToolTipText("<html>Converts condition into a subquery.<br> This allows to add joins with related tables or limiting clauses etc. </html>");
+        toSubQueryButton.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                toSubQueryButtonActionPerformed(evt);
+            }
+        });
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 4;
+        gridBagConstraints.gridy = 1;
+        gridBagConstraints.gridwidth = 2;
+        gridBagConstraints.gridheight = 2;
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.SOUTH;
+        jPanel3.add(toSubQueryButton, gridBagConstraints);
+
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 0;
+        gridBagConstraints.gridy = 20;
+        gridBagConstraints.gridwidth = 30;
+        gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
+        gridBagConstraints.weightx = 1.0;
+        jPanel1.add(jPanel3, gridBagConstraints);
+
+        jPanel4.setBorder(javax.swing.BorderFactory.createEtchedBorder());
+        jPanel4.setLayout(new java.awt.GridBagLayout());
+
+        jLabel2.setForeground(new java.awt.Color(128, 128, 128));
+        jLabel2.setText("<html>  <i>Ctrl+Space</i> for code completion. <i>Ctrl+Enter</i> for Ok.</html>");
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 1;
+        gridBagConstraints.gridy = 1;
+        gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.WEST;
+        gridBagConstraints.weightx = 1.0;
+        jPanel4.add(jLabel2, gridBagConstraints);
+
+        gripPanel.setLayout(new java.awt.FlowLayout(java.awt.FlowLayout.CENTER, 0, 0));
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 2;
+        gridBagConstraints.gridy = 1;
+        gridBagConstraints.fill = java.awt.GridBagConstraints.BOTH;
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.SOUTHEAST;
+        jPanel4.add(gripPanel, gridBagConstraints);
+
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 1;
+        gridBagConstraints.gridy = 30;
+        gridBagConstraints.gridwidth = 30;
+        gridBagConstraints.fill = java.awt.GridBagConstraints.BOTH;
+        gridBagConstraints.weightx = 1.0;
+        jPanel1.add(jPanel4, gridBagConstraints);
 
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 10;
@@ -413,14 +481,16 @@ public class ConditionEditor extends EscapableDialog {
 	private Table table1, table2;
 	private String table1alias, table2alias;
 	private boolean addPseudoColumns;
+	private String initialCondition;
 	
 	/**
 	 * Edits a given condition.
+	 * @param locator 
 	 * 
 	 * @param condition the condition
 	 * @return new condition or <code>null</code>, if user canceled the editor
 	 */
-	public String edit(String condition, String table1label, String table1alias, Table table1, String table2label, String table2alias, Table table2, boolean addPseudoColumns, boolean addConvertSubqueryButton) {
+	public void edit(JComponent locator, String condition, String table1label, String table1alias, Table table1, String table2label, String table2alias, Table table2, boolean addPseudoColumns, boolean addConvertSubqueryButton) {
 		if (Pattern.compile("\\bselect\\b", Pattern.CASE_INSENSITIVE|Pattern.DOTALL).matcher(condition).find()) {
 			condition = new BasicFormatterImpl().format(condition);
 		}
@@ -482,11 +552,16 @@ public class ConditionEditor extends EscapableDialog {
 				editorPane.grabFocus();
 			}
 		});
-		setVisible(true);
-		if (ok && condition.equals(editorPane.getText())) {
-			ok = false;
+		initialCondition = condition;
+		
+		if (locator != null) {
+			Point locationLocation = locator.getLocationOnScreen();
+        	Point location;
+        	location = new Point(locationLocation.x, locationLocation.y);
+        	setLocationAndFit(location);
 		}
-		return ok? removeSingleLineComments(editorPane.getText()).replaceAll("\\n(\\r?) *", " ").replace('\n', ' ').replace('\r', ' ') : null;
+		
+		setVisible(true);
 	}
 
 	/**
@@ -531,7 +606,7 @@ public class ConditionEditor extends EscapableDialog {
 
 	public void setLocationAndFit(Point pos) {
 		setLocation(pos);
-//		UIUtil.fit(this);
+		UIUtil.fit(this);
         try {
             // Get the size of the screen
             Dimension dim = Toolkit.getDefaultToolkit().getScreenSize();
@@ -545,13 +620,15 @@ public class ConditionEditor extends EscapableDialog {
 	}
 
     // Variables declaration - do not modify//GEN-BEGIN:variables
-    public javax.swing.JPanel addOnPanel;
+    protected javax.swing.JPanel addOnPanel;
     private javax.swing.JButton cancelButton;
-    private javax.swing.JLabel jLabel1;
+    private javax.swing.JPanel gripPanel;
     private javax.swing.JLabel jLabel2;
     private javax.swing.JPanel jPanel1;
     private javax.swing.JPanel jPanel2;
     private javax.swing.JPanel jPanel3;
+    private javax.swing.JPanel jPanel4;
+    private javax.swing.JPanel jPanel5;
     private javax.swing.JButton okButton;
     private javax.swing.JPanel paramsPanel;
     protected javax.swing.JLabel table1dropDown;
@@ -575,7 +652,9 @@ public class ConditionEditor extends EscapableDialog {
 		}
 	}
 	
-	public final RSyntaxTextAreaWithSQLSyntaxStyle editorPane;
+	public RSyntaxTextAreaWithSQLSyntaxStyle editorPane;
+
+	protected abstract void consume(String cond);
 	
 	private static final long serialVersionUID = -5169934807182707970L;
 
