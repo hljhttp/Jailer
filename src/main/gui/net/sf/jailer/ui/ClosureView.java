@@ -62,6 +62,7 @@ import javax.swing.JMenuItem;
 import javax.swing.JPopupMenu;
 import javax.swing.JSeparator;
 import javax.swing.JTable;
+import javax.swing.JToggleButton;
 import javax.swing.SwingUtilities;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableCellRenderer;
@@ -76,6 +77,7 @@ import net.sf.jailer.ui.pathfinder.PathFinder;
 import net.sf.jailer.ui.pathfinder.PathFinder.Result;
 import net.sf.jailer.ui.scrollmenu.JScrollMenu;
 import net.sf.jailer.ui.scrollmenu.JScrollPopupMenu;
+import net.sf.jailer.ui.util.UISettings;
 import net.sf.jailer.util.Pair;
 import net.sf.jailer.util.SqlUtil;
 
@@ -162,12 +164,13 @@ public abstract class ClosureView extends javax.swing.JDialog {
 		GridBagConstraints gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 1;
         gridBagConstraints.gridy = 2;
-        JButton searchButton = StringSearchPanel.createSearchButton(extractionModelEditor.extractionModelFrame, searchComboBox, "Find Table", new Runnable() {
+		final javax.swing.JComboBox comboBox1 = searchComboBox;
+        JToggleButton searchButton = StringSearchPanel.createSearchButton(extractionModelEditor.extractionModelFrame, comboBox1, "Find Table", new Runnable() {
 			@Override
 			public void run() {
 				findButtonActionPerformed(null);
 			}
-		});
+		}, null, null, null, false, null, false);
 		tablePanel.add(searchButton, gridBagConstraints);
         
         searchComboBox.setVisible(false);
@@ -198,7 +201,7 @@ public abstract class ClosureView extends javax.swing.JDialog {
 			source = getDataModel().getTableByDisplayName((String) currentSelection);
 		}
         final javax.swing.JComboBox comboBox = findPathComboBox;
-        JButton stFindButtonButton = StringSearchPanel.createSearchButton(extractionModelEditor.extractionModelFrame, comboBox, 
+        JToggleButton stFindButtonButton = StringSearchPanel.createSearchButton(extractionModelEditor.extractionModelFrame, comboBox, 
     		new Object() {
 				public String toString() {
 					Table source = null;
@@ -232,7 +235,7 @@ public abstract class ClosureView extends javax.swing.JDialog {
 					};
 			        return historyPanel;
 				}
-			});
+			}, false);
 		tablePanel.add(stFindButtonButton, gridBagConstraints);
         
         findPathComboBox.setVisible(false);
@@ -679,6 +682,7 @@ public abstract class ClosureView extends javax.swing.JDialog {
 								while (!toSelect.isEmpty()) {
 									Table dest = toSelect.pop();
 									if (!ClosureView.this.extractionModelEditor.graphView.isTableVisible(dest)) {
+										++UISettings.s9;
 										ClosureView.this.extractionModelEditor.graphView.showTable(source, dest);
 									}
 									source = dest;

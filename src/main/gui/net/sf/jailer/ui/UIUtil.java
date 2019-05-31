@@ -469,7 +469,7 @@ public class UIUtil {
                                 }).start();
                                 outputView.dialog.setTitle("Jailer Console - cancelling...");
                                 if (progressListener != null) {
-                                    progressListener.newStage("cancelling", true, true);
+                                    progressListener.newStage("cancelling...", true, true);
                                 }
                                 outputView.getCancelButton().setEnabled(false);
                                 cancelled = true;
@@ -686,6 +686,9 @@ public class UIUtil {
 					((SqlException) t).isFormatted()? message : lineWrap(message, 120).toString(), sql, ((SqlException) t).isFormatted(), true, null);
             return;
         }
+        if (t instanceof CancellationException) {
+        	return;
+        }
         String message = t.getMessage();
         if (message == null || "".equals(message.trim())) {
             message = t.getClass().getName();
@@ -710,8 +713,7 @@ public class UIUtil {
             contextDesc += "\n" + JailerVersion.APPLICATION_NAME + " " + JailerVersion.VERSION + "\n\n" + sw.toString();
             
             final int MAX_CL = 1000;
-            
-			String iMsg = msg.toString() + "\n" + JailerVersion.APPLICATION_NAME + " " + JailerVersion.VERSION + "\n\n" + sw.toString();
+            String iMsg = msg.toString() + "\n" + JailerVersion.APPLICATION_NAME + " " + JailerVersion.VERSION + "\n\n" + sw.toString();
             if (iMsg.length() > MAX_CL) {
             	iMsg = iMsg.substring(0, MAX_CL);
             }

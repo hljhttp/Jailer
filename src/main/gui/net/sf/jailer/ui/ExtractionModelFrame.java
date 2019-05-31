@@ -1082,9 +1082,11 @@ public class ExtractionModelFrame extends javax.swing.JFrame {
 			DataBrowser dataBrowser;
 			try {
 				dataBrowser = new DataBrowser(extractionModelEditor.dataModel, root, condition, dbConnectionDialog, true, executionContext);
-				dataBrowser.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
-				dataBrowser.setExtendedState(Frame.MAXIMIZED_BOTH);
-				dataBrowser.setVisible(true);
+				if (dataBrowser.isReady()) {
+					dataBrowser.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
+					dataBrowser.setExtendedState(Frame.MAXIMIZED_BOTH);
+					dataBrowser.setVisible(true);
+				}
 			} catch (Exception e) {
 				UIUtil.showException(this, "Error", e);
 			}
@@ -1398,7 +1400,7 @@ public class ExtractionModelFrame extends javax.swing.JFrame {
 			File file = saveRestrictions();
 			args.add(file.getAbsolutePath());
 			UIUtil.runJailer(this, args, false, true, false, true, null, null, null /* dbConnectionDialog.getPassword() */, null, null, false, true, false, executionContext);
-			BrowserLauncher.openURL(Environment.newFile(table == null? "render/index.html" : ("render/" + HtmlDataModelRenderer.toFileName(table))).getPath());
+			BrowserLauncher.openURL(Environment.newFile(table == null? "render/index.html" : ("render/" + HtmlDataModelRenderer.toFileName(table))).toURI());
 		} catch (Exception e) {
 			UIUtil.showException(this, "Error", e);
 		}
@@ -1929,6 +1931,7 @@ public class ExtractionModelFrame extends javax.swing.JFrame {
 		try {
 			start(args);
 		} catch (Throwable t) {
+			t.printStackTrace();
 			UIUtil.showException(null, "Error", t);
 		}
 	}
@@ -1940,6 +1943,7 @@ public class ExtractionModelFrame extends javax.swing.JFrame {
 		try {
 			Environment.init();
 		} catch (Throwable e) {
+			e.printStackTrace();
 			UIUtil.showException(null, "Error", e);
 			return;
 		}
@@ -1952,6 +1956,7 @@ public class ExtractionModelFrame extends javax.swing.JFrame {
 		try {
 			CommandLineInstance.init(args);
 		} catch (Exception e) {
+			e.printStackTrace();
 			UIUtil.showException(null, "Illegal arguments", e);
 			return;
 		}
@@ -2001,6 +2006,7 @@ public class ExtractionModelFrame extends javax.swing.JFrame {
 					}
 					createFrame(file, true, null);
 				} catch (Throwable e) {
+					e.printStackTrace();
 					UIUtil.showException(null, "Error", e);
 				}
 			}
@@ -2073,7 +2079,7 @@ public class ExtractionModelFrame extends javax.swing.JFrame {
 					protected void onSelect(DbConnectionDialog connectionDialog, ExecutionContext executionContext) {
 						ExtractionModelFrame extractionModelFrame = null;
 						try {
-							extractionModelFrame = createFrame(finalFile, true, true, connectionDialog, executionContext);
+							extractionModelFrame = createFrame(null, true, true, connectionDialog, executionContext);
 							final ExtractionModelFrame finalExtractionModelFrame = extractionModelFrame;
 							SwingUtilities.invokeLater(new Runnable() {
 								@Override
@@ -2084,14 +2090,22 @@ public class ExtractionModelFrame extends javax.swing.JFrame {
 										UIUtil.showException(finalExtractionModelFrame, "Error", e);
 									}
 									if (withStartupWizzard) {
-										StartupWizzardDialog suw = new StartupWizzardDialog(finalExtractionModelFrame);
-										if (suw.loadModel) {
-											finalExtractionModelFrame.loadActionPerformed(null);
-										}
-										if (suw.newModelWithRestrictions) {
-											finalExtractionModelFrame.extractionModelEditor.ignoreAll(null);
-											finalExtractionModelFrame.extractionModelEditor.extractionModelFrame.updateTitle(finalExtractionModelFrame.extractionModelEditor.needsSave);
-										}
+										StartupWizzardDialog suw = new StartupWizzardDialog(finalExtractionModelFrame) {
+											@Override
+											protected void onClose() {
+												try {
+													if (loadModel) {
+														finalExtractionModelFrame.loadActionPerformed(null);
+													}
+													if (newModelWithRestrictions) {
+														finalExtractionModelFrame.extractionModelEditor.ignoreAll(null);
+														finalExtractionModelFrame.extractionModelEditor.extractionModelFrame.updateTitle(finalExtractionModelFrame.extractionModelEditor.needsSave);
+													}
+												} catch (Exception e) {
+													UIUtil.showException(finalExtractionModelFrame, "Error", e);
+												}
+											}
+										};
 									}
 								}
 							});

@@ -127,7 +127,7 @@ public class DBMS {
 		this.procedureDetailNeedsSpecificName = other.procedureDetailNeedsSpecificName;
 		this.limitTransactionSize = other.limitTransactionSize;
 		this.defaultSchemaQuery = other.defaultSchemaQuery;
-		this.fetchSize = fetchSize;
+		this.fetchSize = other.fetchSize;
 	}
 
 	/**
@@ -306,6 +306,7 @@ public class DBMS {
 	private String indexInfoQuery = null;
 	private String identifierQuoteString = "\"";
 
+	private String explainCreateExplainTable = null;
 	private String explainPrepare = null;
 	private String explainQuery = null;
 	private String explainCleanup = null;
@@ -942,6 +943,14 @@ public class DBMS {
 
 	public void setExplainPrepare(String explainPrepare) {
 		this.explainPrepare = explainPrepare;
+	}
+
+	public String getExplainCreateExplainTable() {
+		return explainCreateExplainTable;
+	}
+
+	public void setExplainCreateExplainTable(String explainCreateExplainTable) {
+		this.explainCreateExplainTable = explainCreateExplainTable;
 	}
 
 	public String getExplainQuery() {

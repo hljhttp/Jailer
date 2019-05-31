@@ -319,13 +319,21 @@ public class Session {
 	/**
 	 * Closes current connection and opens a new one.
 	 */
-	public void reconnect() throws SQLException {
+	public void reconnect() {
 		Connection con = connection.get();
 		if (con != null) {
 			if (temporaryTableScope == WorkingTableScope.TRANSACTION_LOCAL) {
-				con.commit();
+				try {
+					con.commit();
+				} catch (SQLException e) {
+					// ignore
+				}
 			}
-			con.close();
+			try {
+				con.close();
+			} catch (SQLException e) {
+				// ignore
+			}
 			connection.set(null);
 			if (con == temporaryTableSession) {
 				temporaryTableSession = null;
@@ -334,9 +342,17 @@ public class Session {
 		}
 		if (temporaryTableSession != null) {
 			if (temporaryTableScope == WorkingTableScope.TRANSACTION_LOCAL) {
-				temporaryTableSession.commit();
+				try {
+					temporaryTableSession.commit();
+				} catch (SQLException e) {
+					// ignore
+				}
 			}
-			temporaryTableSession.close();
+			try {
+				temporaryTableSession.close();
+			} catch (SQLException e) {
+				// ignore
+			}
 			temporaryTableSession = null;
 		}
 	}
@@ -445,6 +461,7 @@ public class Session {
 	private long executeQuery(Connection theConnection, String sqlQuery, ResultSetReader reader, String alternativeSQL, Object context, int limit, int timeout) throws SQLException {
 		long rc = 0;
 		CancellationHandler.checkForCancellation(context);
+		long startTime = System.currentTimeMillis();
 		Statement statement = null;
 		try {
 			statement = theConnection.createStatement();
@@ -496,7 +513,7 @@ public class Session {
 			}
 		}
 		if (getLogStatements()) {
-			_log.info(rc + " row(s)");
+			_log.info(rc + " row(s) in " + (System.currentTimeMillis() - startTime) + " ms");
 		}
 		return rc;
 	}
@@ -579,6 +596,7 @@ public class Session {
 			boolean serializeAccess = false;
 
 			while (!ok) {
+				long startTime = System.currentTimeMillis();
 				Statement statement = null;
 				try {
 					statement = connectionFactory.getConnection().createStatement();
@@ -620,7 +638,7 @@ public class Session {
 					CancellationHandler.end(statement, null);
 					ok = true;
 					if (getLogStatements()) {
-						_log.info("" + rowCount + " row(s)");
+						_log.info("" + rowCount + " row(s) in " + (System.currentTimeMillis() - startTime) + " ms");
 					}
 				} catch (SQLException e) {
 					CancellationHandler.checkForCancellation(null);
@@ -677,6 +695,7 @@ public class Session {
 		try {
 			CancellationHandler.checkForCancellation(null);
 			int rowCount = 0;
+			long startTime = System.currentTimeMillis();
 			PreparedStatement statement = null;
 			try {
 				statement = connectionFactory.getConnection().prepareStatement(sqlUpdate);
@@ -688,7 +707,7 @@ public class Session {
 				rowCount = statement.executeUpdate();
 				CancellationHandler.end(statement, null);
 				if (getLogStatements()) {
-					_log.info("" + rowCount + " row(s)");
+					_log.info("" + rowCount + " row(s) in " + (System.currentTimeMillis() - startTime) + " ms");
 				}
 			} finally {
 				if (statement != null) {
@@ -810,6 +829,7 @@ public class Session {
 			_log.info(sql);
 		}
 		long rc = 0;
+		long startTime = System.currentTimeMillis();
 		Statement statement = null;
 		try {
 			CancellationHandler.checkForCancellation(cancellationContext);
@@ -817,7 +837,7 @@ public class Session {
 			CancellationHandler.begin(statement, cancellationContext);
 			rc = statement.executeUpdate(sql);
 			if (getLogStatements()) {
-				_log.info("" + rc + " row(s)");
+				_log.info("" + rc + " row(s) in " + (System.currentTimeMillis() - startTime) + " ms");
 			}
 		} catch (SQLException e) {
 			CancellationHandler.checkForCancellation(cancellationContext);

@@ -113,6 +113,17 @@ public class LocalEntityGraph extends EntityGraph {
 			return new CellContentConverter(resultSetMetaData, localSession, localSession.dbms);
 		}
 		
+		@Override
+		public void close() throws SQLException {
+			if (DBMS.POSTGRESQL.equals(remoteSession.dbms)) {
+				if (statementBuilder.size() == 1) {
+					process("(Select " + statementBuilder.getItems().get(0) + " Union Select " + statementBuilder.getItems().get(0) + ") " + name);
+				}
+			} else {
+				super.close();
+			}
+		}
+		
 	}
 
 	private abstract class LocalInlineViewBuilder extends InlineViewBuilder {

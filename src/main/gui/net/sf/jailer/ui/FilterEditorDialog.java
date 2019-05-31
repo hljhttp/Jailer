@@ -493,7 +493,7 @@ public class FilterEditorDialog extends javax.swing.JDialog {
         gridBagConstraints.fill = java.awt.GridBagConstraints.NONE;
         gridBagConstraints.anchor = java.awt.GridBagConstraints.WEST;
         gridBagConstraints.insets = new java.awt.Insets(4, 0, 4, 0);
-        jPanel5.add(StringSearchPanel.createSearchButton(parent, tableBox, "Find Table", null), gridBagConstraints);
+        jPanel5.add(StringSearchPanel.createSearchButton(this, tableBox, "Find Table", null), gridBagConstraints);
         
 		final ListCellRenderer tableBoxRenderer = tableBox.getRenderer();
 		tableBox.setRenderer(new ListCellRenderer() {
@@ -543,8 +543,8 @@ public class FilterEditorDialog extends javax.swing.JDialog {
 					conditionEditor.setTitle(templateDetailsNameField.getText().trim());
 					String cond = conditionEditor.edit(templateDetailsNewValueField.getText(), null, null, null, null, null, null, false, templatesDetailsApplyAtComboBox.getSelectedIndex() == 0);
 					if (cond != null) {
-						if (!templateDetailsNewValueField.getText().equals(ConditionEditor.toSingleLine(cond))) {
-							templateDetailsNewValueField.setText(ConditionEditor.toSingleLine(cond));
+						if (!templateDetailsNewValueField.getText().equals((cond))) {
+							templateDetailsNewValueField.setText((cond));
 						}
 						templatesDetailsMulitlineLabel.setIcon(conditionEditorIcon);
 					}
@@ -957,7 +957,7 @@ public class FilterEditorDialog extends javax.swing.JDialog {
 				}
 				
 				final javax.swing.JTextField textField = new javax.swing.JTextField();
-				final String initialExpr = filter == null? (c.getFilter() == null? Filter.OLD_VALUE_PROP : ConditionEditor.toSingleLine(c.getFilter().getExpression())) : ConditionEditor.toSingleLine(filter);
+				final String initialExpr = filter == null? (c.getFilter() == null? Filter.OLD_VALUE_PROP : (c.getFilter().getExpression())) : (filter);
 				final boolean hasFilter = c.getFilter() != null;
 				final boolean hasDerivedFilter = c.getFilter() != null && c.getFilter().isDerived();
 				final boolean finalIsPk = isPK;
@@ -1092,8 +1092,8 @@ public class FilterEditorDialog extends javax.swing.JDialog {
 							conditionEditor.setTitle(columnName.trim());
 							String cond = conditionEditor.edit(textField.getText(), "Table", "T", table, null, null, null, false, applyAtCB.getSelectedIndex() == 0);
 							if (cond != null) {
-								if (!textField.getText().equals(ConditionEditor.toSingleLine(cond))) {
-									textField.setText(ConditionEditor.toSingleLine(cond));
+								if (!textField.getText().equals((cond))) {
+									textField.setText((cond));
 								}
 								theLabel.setIcon(conditionEditorIcon);
 							}
@@ -1258,7 +1258,7 @@ public class FilterEditorDialog extends javax.swing.JDialog {
 	 */
 	private void storeFilterExpressions() {
 		for (Column c: filterTextfieldsPerColumn.keySet()) {
-			String newFilter = ConditionEditor.toMultiLine(filterTextfieldsPerColumn.get(c).getText()).trim();
+			String newFilter = (filterTextfieldsPerColumn.get(c).getText()).trim();
 			boolean hasDerivedFilter = c.getFilter() != null && c.getFilter().isDerived();
 			if (hasDerivedFilter && newFilter.length() == 0) {
 				newFilter = Filter.OLD_VALUE_PROP;
@@ -1294,7 +1294,7 @@ public class FilterEditorDialog extends javax.swing.JDialog {
 	 */
 	private boolean needsSave() {
 		for (Column c: filterTextfieldsPerColumn.keySet()) {
-			String newFilter = ConditionEditor.toMultiLine(filterTextfieldsPerColumn.get(c).getText()).trim();
+			String newFilter = (filterTextfieldsPerColumn.get(c).getText()).trim();
 			boolean hasDerivedFilter = c.getFilter() != null && c.getFilter().isDerived();
 			if (hasDerivedFilter && newFilter.length() == 0) {
 				newFilter = Filter.OLD_VALUE_PROP;
