@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 the original author or authors.
+ * Copyright 2007 - 2019 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,7 +35,6 @@ import java.util.Set;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
-import javax.swing.SwingUtilities;
 import javax.swing.event.PopupMenuEvent;
 import javax.swing.event.PopupMenuListener;
 
@@ -172,7 +171,7 @@ public class NeighborhoodPanel extends javax.swing.JPanel {
 								}
 								@Override
 								public void popupMenuWillBecomeInvisible(PopupMenuEvent e) {
-									SwingUtilities.invokeLater(new Runnable() {
+									UIUtil.invokeLater(new Runnable() {
 										@Override
 										public void run() {
 											initTableList(dataModel, table, hideIgnored, graphView);

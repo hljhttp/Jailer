@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 the original author or authors.
+ * Copyright 2007 - 2019 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -319,7 +319,7 @@ public abstract class Desktop extends JDesktopPane {
 						for (final RowBrowser rb : tableBrowsers) {
 							if (rb.internalFrame.isSelected()) {
 								rb.browserContentPane.rowsTable.grabFocus();
-								SwingUtilities.invokeLater(new Runnable() {
+								UIUtil.invokeLater(new Runnable() {
 									@Override
 									public void run() {
 										rb.browserContentPane.openQueryBuilder(true);
@@ -1050,6 +1050,11 @@ public abstract class Desktop extends JDesktopPane {
 					}
 				}
 				return tb;
+			}
+
+			@Override
+			protected boolean shouldShowLoadErrors() {
+				return isDesktopVisible();
 			}
 
 		};

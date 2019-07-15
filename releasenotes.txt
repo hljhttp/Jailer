@@ -1,9 +1,30 @@
+8.8
+  - New feature "Check Primary Keys" makes it possible to check the user-defined primary keys for uniqueness.
+  - A warning message appears if the number of collected rows differs from the number of exported ones.
+  - The performance of the preparation for the subsetting-process has been improved.
+  - Extraction models can now be loaded from the "Data Model Manager" dialog.
+  - It was not possible to pass user / password via cli when it starts with '-'
+  - Updated local database to H2 1.4.199.
+  - The fonts selection in the GUI has been standardized.
+  - Improved error handling in the data browser.
+    If the same error occurs multiple times because it affects multiple table browsers,
+    it will be displayed only once.
+
+8.7.8
+  - Fixed a bug that caused the creation of a delete script to generate syntactically incorrect SQL statements when a table without a primary key exists.
+
+8.7.5
+  - Fix for ticket 39 "Oracle queries are going failed". https://sourceforge.net/p/jailer/bugs/39/ 
+  - Minor bug fixes.
+
 8.7.3
-  - TBD
+  - Fix: the working table scope "local" did not work correctly with PostgreSQL.
+  - Cursor-based result sets have been activated under PostgreSQL.
+    Retrieving the entire ResultSet at once led to out-of-memory errors.
 
 8.7.2
   - Selected tables are automatically scrolled into the visible area of the display.
-  - Fix: not all associations between two visible tables were always displayed.
+  - Fix: not all associations between two visible tables were always visible.
 
 8.7.1
   - SQL Console is now robust against outdated metadata.

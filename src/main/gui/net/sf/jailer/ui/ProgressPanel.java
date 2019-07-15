@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 the original author or authors.
+ * Copyright 2007 - 2019 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,7 +31,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 
-import javax.swing.BorderFactory;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
@@ -167,6 +166,8 @@ public class ProgressPanel extends javax.swing.JPanel {
 		gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
 		gridBagConstraints.weighty = 1.0;
 		rowsPerTablePanel.add(l, gridBagConstraints);
+		
+		rowsPerTablePanel.repaint();
 	}
 
 	private int currentlySelectedRow = -1;
@@ -274,7 +275,7 @@ public class ProgressPanel extends javax.swing.JPanel {
 
         jPanel2.setLayout(new java.awt.GridBagLayout());
 
-        jLabel3.setFont(new java.awt.Font("DejaVu Sans", 1, 13)); // NOI18N
+        jLabel3.setFont(jLabel3.getFont().deriveFont(jLabel3.getFont().getStyle() & ~java.awt.Font.BOLD, jLabel3.getFont().getSize()+2));
         jLabel3.setText(" Stage ");
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 1;
@@ -283,13 +284,13 @@ public class ProgressPanel extends javax.swing.JPanel {
         gridBagConstraints.insets = new java.awt.Insets(4, 0, 0, 0);
         jPanel2.add(jLabel3, gridBagConstraints);
 
-        jLabel4.setFont(new java.awt.Font("DejaVu Sans", 1, 13)); // NOI18N
+        jLabel4.setFont(jLabel4.getFont().deriveFont(jLabel4.getFont().getStyle() & ~java.awt.Font.BOLD, jLabel4.getFont().getSize()+2));
         jLabel4.setText(" Collected Rows  ");
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 1;
         gridBagConstraints.gridy = 2;
         gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
-        gridBagConstraints.insets = new java.awt.Insets(4, 0, 0, 0);
+        gridBagConstraints.insets = new java.awt.Insets(12, 0, 0, 0);
         jPanel2.add(jLabel4, gridBagConstraints);
 
         stepLabel.setText(" ");
@@ -300,7 +301,7 @@ public class ProgressPanel extends javax.swing.JPanel {
         gridBagConstraints.weightx = 1.0;
         jPanel2.add(stepLabel, gridBagConstraints);
 
-        jLabel5.setFont(new java.awt.Font("DejaVu Sans", 1, 13)); // NOI18N
+        jLabel5.setFont(jLabel5.getFont().deriveFont(jLabel5.getFont().getStyle() & ~java.awt.Font.BOLD, jLabel5.getFont().getSize()+2));
         jLabel5.setText(" Exported Rows  ");
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 1;
@@ -315,7 +316,7 @@ public class ProgressPanel extends javax.swing.JPanel {
         gridBagConstraints.gridy = 2;
         gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
         gridBagConstraints.weightx = 1.0;
-        gridBagConstraints.insets = new java.awt.Insets(4, 0, 0, 0);
+        gridBagConstraints.insets = new java.awt.Insets(12, 0, 0, 0);
         jPanel2.add(collectedRowsLabel, gridBagConstraints);
 
         exportedRowsLabel.setText("0");
@@ -327,7 +328,7 @@ public class ProgressPanel extends javax.swing.JPanel {
         gridBagConstraints.insets = new java.awt.Insets(4, 0, 0, 0);
         jPanel2.add(exportedRowsLabel, gridBagConstraints);
 
-        jPanel5.setBorder(javax.swing.BorderFactory.createTitledBorder("Rows per Table"));
+        jPanel5.setBorder(javax.swing.BorderFactory.createTitledBorder(null, "Rows per Table", javax.swing.border.TitledBorder.DEFAULT_JUSTIFICATION, javax.swing.border.TitledBorder.DEFAULT_POSITION, UIUtil.defaultTitleFont()));
         jPanel5.setLayout(new java.awt.GridBagLayout());
 
         rowsPerTablePanel.setLayout(new java.awt.GridBagLayout());
@@ -355,7 +356,7 @@ public class ProgressPanel extends javax.swing.JPanel {
         gridBagConstraints.gridy = 11;
         jPanel2.add(jLabel1, gridBagConstraints);
 
-        jLabel6.setFont(new java.awt.Font("DejaVu Sans", 1, 13)); // NOI18N
+        jLabel6.setFont(jLabel6.getFont().deriveFont(jLabel6.getFont().getStyle() & ~java.awt.Font.BOLD, jLabel6.getFont().getSize()+2));
         jLabel6.setText(" Elapsed Time ");
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 1;
@@ -373,7 +374,7 @@ public class ProgressPanel extends javax.swing.JPanel {
         gridBagConstraints.insets = new java.awt.Insets(4, 0, 0, 0);
         jPanel2.add(elapsedTimeLabel, gridBagConstraints);
 
-        deletedRowsTitelLabel.setFont(new java.awt.Font("DejaVu Sans", 1, 13)); // NOI18N
+        deletedRowsTitelLabel.setFont(deletedRowsTitelLabel.getFont().deriveFont(deletedRowsTitelLabel.getFont().getStyle() & ~java.awt.Font.BOLD, deletedRowsTitelLabel.getFont().getSize()+2));
         deletedRowsTitelLabel.setText(" Deleted Rows  ");
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 1;
@@ -391,7 +392,7 @@ public class ProgressPanel extends javax.swing.JPanel {
         gridBagConstraints.insets = new java.awt.Insets(4, 0, 0, 0);
         jPanel2.add(deletedRowsLabel, gridBagConstraints);
 
-        explainedRowsTitelLabel.setFont(new java.awt.Font("DejaVu Sans", 1, 13)); // NOI18N
+        explainedRowsTitelLabel.setFont(explainedRowsTitelLabel.getFont().deriveFont(explainedRowsTitelLabel.getFont().getStyle() & ~java.awt.Font.BOLD, explainedRowsTitelLabel.getFont().getSize()+2));
         explainedRowsTitelLabel.setText(" Explained Rows  ");
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 1;

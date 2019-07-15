@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 the original author or authors.
+ * Copyright 2007 - 2019 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 package net.sf.jailer.ui;
 
 import java.awt.Desktop;
+import java.awt.GridBagConstraints;
 import java.awt.Window;
 import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
@@ -51,9 +52,10 @@ public class SqlErrorDialog extends javax.swing.JDialog {
 
 	private static final long serialVersionUID = -6737420167295938488L;
 
-	/** Creates new form SqlErrorDialog */
+	/** Creates new form SqlErrorDialog 
+	 * @param isWarning */
 	@SuppressWarnings("serial")
-	public SqlErrorDialog(Window parent, String message, String sql, boolean isFormatted, boolean sqlError, String title) {
+	public SqlErrorDialog(Window parent, String message, String sql, boolean isFormatted, boolean sqlError, String title, boolean isWarning, JComponent additionalControl) {
 		super(parent, ModalityType.APPLICATION_MODAL);
 		this.sqlError = sqlError;
 		this.message = message;
@@ -67,6 +69,19 @@ public class SqlErrorDialog extends javax.swing.JDialog {
 			}
 		}
 		initComponents();
+
+		if (isWarning) {
+			jPanel1.setVisible(false);
+			copyButton.setVisible(false);
+		}
+		if (additionalControl != null) {
+			GridBagConstraints gridBagConstraints = new java.awt.GridBagConstraints();
+	        gridBagConstraints.gridx = 1;
+	        gridBagConstraints.gridy = 3;
+	        gridBagConstraints.weightx = 1;
+	        gridBagConstraints.anchor = java.awt.GridBagConstraints.EAST;
+	        getContentPane().add(additionalControl, gridBagConstraints);
+		}
 		
 		updateInfoPanel.setVisible(false);
 		
@@ -184,8 +199,8 @@ public class SqlErrorDialog extends javax.swing.JDialog {
         messagePanel = new javax.swing.JPanel();
         jLabel1 = new javax.swing.JLabel();
         jPanel2 = new javax.swing.JPanel();
-        jButton1 = new javax.swing.JButton();
         sendButton = new javax.swing.JButton();
+        jButton1 = new javax.swing.JButton();
         updateInfoPanel = new javax.swing.JPanel();
         updateInfoLabel = new javax.swing.JLabel();
         downloadButton = new javax.swing.JButton();
@@ -198,7 +213,7 @@ public class SqlErrorDialog extends javax.swing.JDialog {
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 0;
         gridBagConstraints.gridy = 2;
-        gridBagConstraints.gridwidth = 2;
+        gridBagConstraints.gridwidth = 5;
         gridBagConstraints.fill = java.awt.GridBagConstraints.BOTH;
         gridBagConstraints.weightx = 1.0;
         gridBagConstraints.weighty = 1.0;
@@ -240,23 +255,14 @@ public class SqlErrorDialog extends javax.swing.JDialog {
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 1;
         gridBagConstraints.gridy = 1;
+        gridBagConstraints.gridwidth = 4;
         gridBagConstraints.fill = java.awt.GridBagConstraints.BOTH;
         gridBagConstraints.ipadx = 1;
+        gridBagConstraints.weightx = 1.0;
         gridBagConstraints.weighty = 0.5;
         getContentPane().add(jScrollPane2, gridBagConstraints);
 
         jPanel2.setLayout(new java.awt.GridBagLayout());
-
-        jButton1.setText(" Close ");
-        jButton1.addActionListener(new java.awt.event.ActionListener() {
-            public void actionPerformed(java.awt.event.ActionEvent evt) {
-                jButton1ActionPerformed(evt);
-            }
-        });
-        gridBagConstraints = new java.awt.GridBagConstraints();
-        gridBagConstraints.gridx = 1;
-        gridBagConstraints.gridy = 1;
-        jPanel2.add(jButton1, gridBagConstraints);
 
         sendButton.setText("Report and Close");
         sendButton.addActionListener(new java.awt.event.ActionListener() {
@@ -265,9 +271,20 @@ public class SqlErrorDialog extends javax.swing.JDialog {
             }
         });
         gridBagConstraints = new java.awt.GridBagConstraints();
-        gridBagConstraints.gridx = 2;
+        gridBagConstraints.gridx = 1;
         gridBagConstraints.gridy = 1;
         jPanel2.add(sendButton, gridBagConstraints);
+
+        jButton1.setText(" Close ");
+        jButton1.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                jButton1ActionPerformed(evt);
+            }
+        });
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 2;
+        gridBagConstraints.gridy = 1;
+        jPanel2.add(jButton1, gridBagConstraints);
 
         updateInfoPanel.setBackground(new java.awt.Color(255, 255, 236));
         updateInfoPanel.setLayout(new java.awt.GridBagLayout());
@@ -300,7 +317,7 @@ public class SqlErrorDialog extends javax.swing.JDialog {
         jPanel2.add(updateInfoPanel, gridBagConstraints);
 
         gridBagConstraints = new java.awt.GridBagConstraints();
-        gridBagConstraints.gridx = 0;
+        gridBagConstraints.gridx = 3;
         gridBagConstraints.gridy = 3;
         gridBagConstraints.gridwidth = 2;
         gridBagConstraints.anchor = java.awt.GridBagConstraints.NORTHEAST;

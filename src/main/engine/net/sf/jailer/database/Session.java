@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 the original author or authors.
+ * Copyright 2007 - 2019 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -256,7 +256,11 @@ public class Session {
 			public synchronized Connection getConnection() throws SQLException {
 				@SuppressWarnings("resource")
 				Connection con = local? connection.get() : temporaryTableSession == null? connection.get() : temporaryTableSession;
-				
+
+				if (con == null && Boolean.TRUE.equals(sharesConnection.get())) {
+					con = defaultConnection;
+				}
+
 				if (con == null) {
 					try {
 						con = dataSource.getConnection();
@@ -429,9 +433,20 @@ public class Session {
 	 * 
 	 * @param sqlQuery the query in SQL
 	 * @param reader the reader for the result
+	 * @param withExplicitCommit if <code>true</code>, switch of autocommit and commit explicitly
+	 */
+	public long executeQuery(String sqlQuery, ResultSetReader reader, boolean withExplicitCommit) throws SQLException {
+		return executeQuery(sqlQuery, reader, null, null, 0, withExplicitCommit);
+	}
+	
+	/**
+	 * Executes a SQL-Query (SELECT).
+	 * 
+	 * @param sqlQuery the query in SQL
+	 * @param reader the reader for the result
 	 */
 	public long executeQuery(String sqlQuery, ResultSetReader reader) throws SQLException {
-		return executeQuery(sqlQuery, reader, null, null, 0);
+		return executeQuery(sqlQuery, reader, null, null, 0, false);
 	}
 	
 	/**
@@ -442,9 +457,23 @@ public class Session {
 	 * @param alternativeSQL query to be executed if sqlQuery fails
 	 * @param limit row limit, 0 for unlimited
 	 * @param context cancellation context
+	 * @param withExplicitCommit if <code>true</code>, switch of autocommit and commit explicitly
+	 */
+	public long executeQuery(String sqlQuery, ResultSetReader reader, String alternativeSQL, Object context, int limit, boolean withExplicitCommit) throws SQLException {
+		return executeQuery(sqlQuery, reader, alternativeSQL, context, limit, 0, withExplicitCommit);
+	}
+
+	/**
+	 * Executes a SQL-Query (SELECT).
+	 * 
+	 * @param sqlQuery the query in SQL
+	 * @param reader the reader for the result
+	 * @param alternativeSQL query to be executed if sqlQuery fails
+	 * @param limit row limit, 0 for unlimited
+	 * @param context cancellation context
 	 */
 	public long executeQuery(String sqlQuery, ResultSetReader reader, String alternativeSQL, Object context, int limit) throws SQLException {
-		return executeQuery(sqlQuery, reader, alternativeSQL, context, limit, 0);
+		return executeQuery(sqlQuery, reader, alternativeSQL, context, limit, 0, false);
 	}
 
 	/**
@@ -457,8 +486,26 @@ public class Session {
 	 * @param limit row limit, 0 for unlimited
 	 * @param context cancellation context
 	 * @param timeout the timeout in sec
+	 * @param withExplicitCommit if <code>true</code>, switch of autocommit and commit explicitly
 	 */
-	private long executeQuery(Connection theConnection, String sqlQuery, ResultSetReader reader, String alternativeSQL, Object context, int limit, int timeout) throws SQLException {
+	private long executeQuery(Connection theConnection, String sqlQuery, ResultSetReader reader, String alternativeSQL, Object context, int limit, int timeout, boolean withExplicitCommit) throws SQLException {
+		if (withExplicitCommit) {
+			synchronized (theConnection) {
+				if (theConnection.getAutoCommit()) {
+					try {
+						theConnection.setAutoCommit(false);
+						return executeQuery(theConnection, sqlQuery, reader, alternativeSQL, context, limit, timeout, false);
+					} finally {
+						try {
+							theConnection.commit();
+						} catch (SQLException e) {
+							_log.warn("commit failed", e);
+						}
+						theConnection.setAutoCommit(true);
+					}
+				}
+			}
+		}
 		long rc = 0;
 		CancellationHandler.checkForCancellation(context);
 		long startTime = System.currentTimeMillis();
@@ -527,13 +574,14 @@ public class Session {
 	 * @param limit row limit, 0 for unlimited
 	 * @param context cancellation context
 	 * @param timeout the timeout in sec
+	 * @param withExplicitCommit if <code>true</code>, switch of autocommit and commit explicitly
 	 */
-	public long executeQuery(String sqlQuery, ResultSetReader reader, String alternativeSQL, Object context, int limit, int timeout) throws SQLException {
+	public long executeQuery(String sqlQuery, ResultSetReader reader, String alternativeSQL, Object context, int limit, int timeout, boolean withExplicitCommit) throws SQLException {
 		if (getLogStatements()) {
 			_log.info(sqlQuery);
 		}
 		try {
-			return executeQuery(connectionFactory.getConnection(), sqlQuery, reader, alternativeSQL, context, limit, timeout);
+			return executeQuery(connectionFactory.getConnection(), sqlQuery, reader, alternativeSQL, context, limit, timeout, withExplicitCommit);
 		} catch (SQLException e) {
 			CancellationHandler.checkForCancellation(context);
 			if (!silent) {
@@ -551,8 +599,9 @@ public class Session {
 	 * 
 	 * @param sqlFile file containing a query in SQL
 	 * @param reader the reader for the result
+	 * @param withExplicitCommit if <code>true</code>, switch of autocommit and commit explicitly
 	 */
-	public void executeQuery(File sqlFile, ResultSetReader reader) throws SQLException {
+	public void executeQuery(File sqlFile, ResultSetReader reader, boolean withExplicitCommit) throws SQLException {
 		StringBuffer result = new StringBuffer();
 		try {
 			BufferedReader in = new BufferedReader(new FileReader(sqlFile));
@@ -567,7 +616,7 @@ public class Session {
 			throw new RuntimeException("Failed to load content of file", e);
 		}
 
-		executeQuery(result.toString(), reader);
+		executeQuery(result.toString(), reader, withExplicitCommit);
 	}
 
 	/**
@@ -895,9 +944,13 @@ public class Session {
 		synchronized (this) {
 			down = true;
 		}
-		_log.info("closing connection...");
+		_log.info("closing connections... (" + connections.size() + ")");
 		for (Connection con: connections) {
-			con.close();
+			try {
+				con.close();
+			} catch (Exception e) {
+				// ignore
+			}
 		}
 		closeTemporaryTableSession();
 		_log.info("connection closed");
@@ -983,7 +1036,7 @@ public class Session {
 				temporaryTableSession.close();
 			}
 		} catch(SQLException e) {
-			_log.error("can't close connection", e);
+			_log.warn("can't close connection", e);
 		}
 		temporaryTableSession = null;
 	}
@@ -1111,6 +1164,12 @@ public class Session {
 			return false;
 		}
 		return true;
+	}
+
+	private final static ThreadLocal<Boolean> sharesConnection = new ThreadLocal<Boolean>();
+	
+	public static void setThreadSharesConnection() {
+		sharesConnection.set(true);
 	}
 
 }
