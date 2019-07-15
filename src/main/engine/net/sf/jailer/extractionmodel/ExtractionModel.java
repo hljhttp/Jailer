@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 the original author or authors.
+ * Copyright 2007 - 2019 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -448,6 +448,10 @@ public class ExtractionModel {
 		List<CsvFile.Line> dmf = new CsvFile(new File(fileName), "datamodelfolder").getLines();
 		if (dmf.size() > 0) {
 			return dmf.get(0).cells.get(0);
+		}
+		List<CsvFile.Line> csv = new CsvFile(new File(fileName), "export modus").getLines();
+		if (csv.isEmpty()) {
+			throw new RuntimeException(fileName + "' is not a valid Jailer extraction model");
 		}
 		return null;
 	}

@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 the original author or authors.
+ * Copyright 2007 - 2019 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -130,7 +130,7 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 	/**
 	 * The parent frame.
 	 */
-	private final java.awt.Frame parent;
+	private final Window parent;
 	
 	private final ExecutionContext executionContext;
 	
@@ -143,6 +143,8 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 		return connect(reason, false);
 	}
 
+	private boolean located = false;
+	
 	/**
 	 * Gets connection to DB.
 	 * 
@@ -152,6 +154,18 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 		boolean oldIsConnected = isConnected;
 		ConnectionInfo oldCurrentConnection = currentConnection;
 		try {
+			if (!located) {
+				pack();
+				setSize(Math.max(710, getWidth()), 450);
+				if (parent != null && parent.isVisible()) {
+					int os = parent.getWidth() > 800? 0 : 80;
+					setLocation(os + parent.getX() + (parent.getWidth() - getWidth()) / 2, Math.max(0, os + parent.getY() + (parent.getHeight() - getHeight()) / 2));			
+				} else {
+					setLocation(100, 150);
+				}
+				UIUtil.initPeer();
+				located = true;
+			}
 			setTitle((reason == null ? "" : (reason + " - ")) + "Connect.");
 			sortConnectionList();
 			refresh();
@@ -173,7 +187,7 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 	private final boolean dataModelAware;
 	
 	/** Creates new form DbConnectionDialog */
-	public DbConnectionDialog(java.awt.Frame parent, DbConnectionDialog other, String applicationName, ExecutionContext executionContext) {
+	public DbConnectionDialog(Window parent, DbConnectionDialog other, String applicationName, ExecutionContext executionContext) {
 		this(parent, applicationName, other.infoBar == null? null : new InfoBar(other.infoBar), executionContext);
 		this.isConnected = other.isConnected;
 		this.connectionList = other.connectionList;
@@ -191,7 +205,7 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 	 * 
 	 * @param applicationName application name. Used to create the name of the demo database alias. 
 	 */
-	public DbConnectionDialog(java.awt.Frame parent, String applicationName, InfoBar infoBar, ExecutionContext executionContext) {
+	public DbConnectionDialog(Window parent, String applicationName, InfoBar infoBar, ExecutionContext executionContext) {
 		this(parent, applicationName, infoBar, executionContext, true);
 	}
 	
@@ -200,8 +214,9 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 	 * 
 	 * @param applicationName application name. Used to create the name of the demo database alias. 
 	 */
-	public DbConnectionDialog(java.awt.Frame parent, String applicationName, InfoBar infoBar, ExecutionContext executionContext, boolean dataModelAware) {
-		super(parent, true);
+	public DbConnectionDialog(Window parent, String applicationName, InfoBar infoBar, ExecutionContext executionContext, boolean dataModelAware) {
+		super(parent);
+		setModal(true);
 		this.executionContext = executionContext;
 		this.parent = parent;
 		this.infoBar = infoBar;
@@ -320,11 +335,7 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 			}
 		});
 		
-		setLocation(100, 150);
-		pack();
-		setSize(Math.max(710, getWidth()), 450);
 		refresh();
-		UIUtil.initPeer();
 	}
 
 	/**
@@ -524,8 +535,8 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 			ConnectionInfo ci = new ConnectionInfo(executionContext);
 			ci.alias = "Demo Scott";
 			ci.driverClass = "org.h2.Driver";
-			ci.jar1 = "lib" + File.separator + "h2-1.3.175.jar";
-			ci.url = "jdbc:h2:" + Environment.newFile("demo-scott").getPath();
+			ci.jar1 = "lib" + File.separator + "h2-1.4.199.jar";
+			ci.url = "jdbc:h2:" + Environment.newFile("demo-scott-1.4").getAbsolutePath();
 			ci.user = "sa";
 			ci.password = "";
 			ci.dataModelFolder = "Demo-Scott";
@@ -536,8 +547,8 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 			ConnectionInfo ci = new ConnectionInfo(executionContext);
 			ci.alias = "Demo Sakila";
 			ci.driverClass = "org.h2.Driver";
-			ci.jar1 = "lib" + File.separator + "h2-1.3.175.jar";
-			ci.url = "jdbc:h2:" + Environment.newFile("demo-sakila").getPath();
+			ci.jar1 = "lib" + File.separator + "h2-1.4.199.jar";
+			ci.url = "jdbc:h2:" + Environment.newFile("demo-sakila-1.4").getAbsolutePath();
 			ci.user = "sa";
 			ci.password = "";
 			ci.dataModelFolder = "Demo-Sakila";
@@ -593,6 +604,7 @@ public class DbConnectionDialog extends javax.swing.JDialog {
         editButton = new javax.swing.JButton();
         copy = new javax.swing.JButton();
         deleteButton = new javax.swing.JButton();
+        jLabel1 = new javax.swing.JLabel();
         infoBarLabel = new javax.swing.JLabel();
         jPanel4 = new javax.swing.JPanel();
         jScrollPane2 = new javax.swing.JScrollPane();
@@ -655,7 +667,7 @@ public class DbConnectionDialog extends javax.swing.JDialog {
         gridBagConstraints.gridx = 10;
         gridBagConstraints.gridy = 10;
         gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
-        gridBagConstraints.insets = new java.awt.Insets(16, 4, 2, 0);
+        gridBagConstraints.insets = new java.awt.Insets(0, 4, 2, 0);
         jPanel3.add(newButton, gridBagConstraints);
 
         editButton.setText(" Edit ");
@@ -696,6 +708,12 @@ public class DbConnectionDialog extends javax.swing.JDialog {
         gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
         gridBagConstraints.insets = new java.awt.Insets(0, 4, 2, 0);
         jPanel3.add(deleteButton, gridBagConstraints);
+
+        jLabel1.setText(" ");
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 10;
+        gridBagConstraints.gridy = 9;
+        jPanel3.add(jLabel1, gridBagConstraints);
 
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 10;
@@ -903,13 +921,13 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 			root = mainPanel;
 		}
 		try {
-			root.setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
+			UIUtil.setWaitCursor(root);
 			if (testConnection(mainPanel, currentConnection)) {
 				isConnected = true;
 				onConnect(currentConnection);
 			}
 		} finally {
-			root.setCursor(Cursor.getPredefinedCursor(Cursor.DEFAULT_CURSOR));
+			UIUtil.resetWaitCursor(root);
 		}
 	}
 
@@ -953,10 +971,17 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 		}
 
 		try {
+			// TODO asyc
 			BasicDataSource dataSource = new BasicDataSource(ci.driverClass, ci.url, ci.user, ci.password, 0, urls);
 			Window w = parent instanceof Window? (Window) parent : SwingUtilities.getWindowAncestor(parent);
 			SessionForUI session = SessionForUI.createSession(dataSource, dataSource.dbms, null, w);
+			String databaseProductName = null;
 			if (session != null) {
+				try {
+					databaseProductName = session.getMetaData().getDatabaseProductName();
+				} catch (Throwable t) {
+					// ignore
+				}
 				session.shutDown();
 				try {
 					UISettings.s10 = ci.url.replaceAll("[^:]*:([^:]*):.*", "$1");
@@ -970,7 +995,7 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 							warned = true;
 							final String title = "Unknown DBMS";
 							JOptionPane.showMessageDialog(parent,
-								"Jailer is not configured for DBMS \"" + session.getMetaData().getDatabaseProductName() + "\"\n" +
+								"Jailer is not configured for DBMS \"" + databaseProductName + "\"\n" +
 								"The results may not be optimal.\nFor assistance please contact:\n" + 
 								"\n" + 
 								"Help desk: https://sourceforge.net/p/jailer/discussion\n" + 
@@ -1097,6 +1122,7 @@ public class DbConnectionDialog extends javax.swing.JDialog {
     private javax.swing.JButton editButton;
     private javax.swing.JLabel infoBarLabel;
     private javax.swing.JButton jButton1;
+    private javax.swing.JLabel jLabel1;
     private javax.swing.JPanel jPanel2;
     private javax.swing.JPanel jPanel3;
     private javax.swing.JPanel jPanel4;
@@ -1148,6 +1174,8 @@ public class DbConnectionDialog extends javax.swing.JDialog {
         }
         return scaledWarnIcon;
     }
+    
+    // TODO: allow more than 4 jars
 
     private static ImageIcon warnIcon;
     private static ImageIcon scaledWarnIcon;

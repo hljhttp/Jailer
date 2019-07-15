@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 the original author or authors.
+ * Copyright 2007 - 2019 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -161,7 +161,13 @@ public class CommandLine {
 
 	@Option(name="-limit-transaction-size", usage="collects the rows using multiple insert operations with a limited number of rows per operation")
 	boolean insertIncrementally = false;
-	
+
+	@Option(name="-abortInCaseOfInconsistency", usage="abort the process if the result is inconsistent due to insufficient transaction isolation")
+	boolean abortInCaseOfInconsistency = false;
+
+	@Option(name="-", usage="do not interpret the next word as an option, even if it begins with '-'. For example, if the username is \"-abc\", use \"- -abc\".")
+	public List<String> escapedWords = new ArrayList<String>();
+
 	@Argument
 	public List<String> arguments = new ArrayList<String>();
 

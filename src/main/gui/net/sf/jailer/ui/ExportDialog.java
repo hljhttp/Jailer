@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 the original author or authors.
+ * Copyright 2007 - 2019 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -72,7 +72,7 @@ import net.sf.jailer.util.Quoting;
  *
  * @author Ralf Wisser
  */
-public class ExportDialog extends javax.swing.JDialog {
+public abstract class ExportDialog extends javax.swing.JDialog {
 
 	/**
 	 * true iff ok-button was clicked.
@@ -145,17 +145,20 @@ public class ExportDialog extends javax.swing.JDialog {
 	private static boolean lastConfirmInsert = false;
 	private final String extractionModelFileName;
 	private final String jmFile;
+	private final String tmpFileName;
 	private final ExecutionContext executionContext;
 
 	/** Creates new form DbConnectionDialog 
 	 * @param showCmd 
 	 * @param jmFile 
+	 * @param tmpFileName 
 	 * @param args */
-	public ExportDialog(java.awt.Frame parent, final DataModel dataModel, final Table subject, String subjectCondition, List<AdditionalSubject> additionalSubjects, Session session, List<String> initialArgs, String user, String password, boolean showCmd, DbConnectionDialog dbConnectionDialog, String extractionModelFileName, String jmFile, ExecutionContext executionContext) {
+	public ExportDialog(java.awt.Frame parent, final DataModel dataModel, final Table subject, String subjectCondition, List<AdditionalSubject> additionalSubjects, Session session, List<String> initialArgs, String user, String password, boolean showCmd, DbConnectionDialog dbConnectionDialog, String extractionModelFileName, String jmFile, String tmpFileName, ExecutionContext executionContext) {
 		super(parent, true);
 		this.executionContext = executionContext;
 		this.extractionModelFileName = extractionModelFileName;
 		this.jmFile = jmFile;
+		this.tmpFileName = tmpFileName;
 		this.subjectCondition = subjectCondition;
 		this.dataModel = dataModel;
 		this.subject = subject;
@@ -1151,7 +1154,7 @@ public class ExportDialog extends javax.swing.JDialog {
         gridBagConstraints.gridx = 0;
         gridBagConstraints.gridy = 56;
         gridBagConstraints.anchor = java.awt.GridBagConstraints.NORTHWEST;
-        gridBagConstraints.insets = new java.awt.Insets(16, 0, 0, 0);
+        gridBagConstraints.insets = new java.awt.Insets(12, 0, 0, 0);
         jPanel1.add(jLabel8, gridBagConstraints);
 
         jLabel7.setText(" Export from"); // NOI18N
@@ -1260,7 +1263,7 @@ public class ExportDialog extends javax.swing.JDialog {
         jPanel8.add(jLabel26, gridBagConstraints);
 
         jLabel27.setForeground(new java.awt.Color(128, 128, 128));
-        jLabel27.setText("  (no write-access required)");
+        jLabel27.setText("  (no update-privilege required)");
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 2;
         gridBagConstraints.gridy = 55;
@@ -1788,6 +1791,11 @@ public class ExportDialog extends javax.swing.JDialog {
 		if (err) {
 			JOptionPane.showMessageDialog(this, "Unfilled mandatory fields", "Error", JOptionPane.ERROR_MESSAGE);
 		} else {
+			if (useRowIds.isVisible() && !useRowIds.isSelected()) {
+				if (!checkForPKs()) {
+					return;
+				}
+			}
 			UIUtil.setWaitCursor(this);
 			boolean cwt;
 			try {
@@ -1796,13 +1804,14 @@ public class ExportDialog extends javax.swing.JDialog {
 				UIUtil.resetWaitCursor(this);
 			}
 			if (cwt) {
-				UIUtil.resetWaitCursor(this);
 				isOk = true;
 				lastConfirmInsert = confirmInsert.isSelected();
 				setVisible(false);
 			}
 		}
 	}//GEN-LAST:event_jButton1ActionPerformed
+
+	protected abstract boolean checkForPKs();
 
 	private boolean createWorkingTables() {
 		List<String> ddlArgs = new ArrayList<String>();
@@ -1837,10 +1846,10 @@ public class ExportDialog extends javax.swing.JDialog {
 				"  - execute the Jailer-DDL manually (jailer_ddl.sql)\n";
 		try {
 			if (!cDDLExecutionContext.isIndependentWorkingTables()) {
-				PrimaryKeyFactory.createUPKScope(jmFile, cDDLExecutionContext);
+				PrimaryKeyFactory.createUPKScope(tmpFileName != null? tmpFileName : jmFile, cDDLExecutionContext);
 			}
 			dataSource = new BasicDataSource(ddlArgs.get(1), ddlArgs.get(2), ddlArgs.get(3), ddlArgs.get(4), 0, dbConnectionDialog.currentJarURLs());
-			String tableInConflict = ddlCreator.getTableInConflict(dataSource, dataSource.dbms);
+			String tableInConflict = getTemporaryTableScope().equals(WorkingTableScope.GLOBAL)? ddlCreator.getTableInConflict(dataSource, dataSource.dbms) : null;
 			if (tableInConflict != null && getTemporaryTableScope().equals(WorkingTableScope.GLOBAL)) {
 				JOptionPane.showMessageDialog(this, "Can't drop table '" + tableInConflict + "' as it is not created by Jailer.\nDrop or rename this table first.", "Error", JOptionPane.ERROR_MESSAGE);
 			} else {
@@ -1988,6 +1997,10 @@ public class ExportDialog extends javax.swing.JDialog {
 		return independentWorkingTables.isSelected();
 	}
 
+	public boolean insertScripFileNameFieldIsEmpty() {
+		return insert.getText().trim().length() == 0;
+	}
+	
 	/**
 	 * Fills field content into cli-args.
 	 * 
@@ -2006,7 +2019,6 @@ public class ExportDialog extends javax.swing.JDialog {
 			args.add(toFileName(delete.getText().trim()));
 		}
 		if (checkPKs.isSelected()) {
-			// TODO add explicit checkPK button/tool
 			args.add("-check-primary-keys");
 		}
 		if (insertIncrementally.isSelected()) {
@@ -2348,7 +2360,5 @@ public class ExportDialog extends javax.swing.JDialog {
 			e.printStackTrace();
 		}
 	}
-
-	private static final long serialVersionUID = 952553009821662964L;
 
 }

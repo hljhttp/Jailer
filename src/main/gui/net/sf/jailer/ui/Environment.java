@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 the original author or authors.
+ * Copyright 2007 - 2019 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@ import java.util.Random;
 
 import net.sf.jailer.configuration.Configuration;
 import net.sf.jailer.render.HtmlDataModelRenderer;
+import net.sf.jailer.ui.util.AWTWatchdog;
 import net.sf.jailer.util.LogUtil;
 
 /**
@@ -62,8 +63,9 @@ public class Environment {
 				copyIfNotExists("datamodel");
 				copyIfNotExists("extractionmodel");
 				copyIfNotExists("layout");
-				copyIfNotExists("demo-scott.h2.db");
-				copyIfNotExists("demo-sakila.h2.db");
+				copyIfNotExists("demo-scott-1.4.mv.db");
+				copyIfNotExists("demo-sakila-1.4.mv.db");
+				copyIfNotExists("demo-scott-subset-1.4.mv.db");
 				copyIfNotExists("example");
 
 				configuration.setTempFileFolder(newFile("tmp").getPath());
@@ -88,6 +90,7 @@ public class Environment {
 				+ (new File(".multiuser").exists() ? 2 : 0) + (new File("..", "dbeauty").exists() ? 4 : 0)
 				+ (!testCreateTempFile() ? 8 : 0)
 				+ stateOffset;
+		AWTWatchdog.start();
 	}
 
 	private static boolean copyIfNotExists(String f) throws IOException {

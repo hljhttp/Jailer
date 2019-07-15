@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 the original author or authors.
+ * Copyright 2007 - 2019 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -365,11 +365,13 @@ public class QueryTypeAnalyser {
 									if (tableName.getPivot() != null) {
 										unknownTable();
 									} else {
-										MDSchema mdSchema;
-										if (schema == null) {
-											mdSchema = metaDataSource.getDefaultSchema();
-										} else {
-											mdSchema = metaDataSource.find(schema);
+										MDSchema mdSchema = null;
+										if (metaDataSource.isInitialized()) {
+											if (schema == null) {
+												mdSchema = metaDataSource.getDefaultSchema();
+											} else {
+												mdSchema = metaDataSource.find(schema);
+											}
 										}
 										if (mdSchema != null) {
 											MDTable mdTable = mdSchema.find(name);

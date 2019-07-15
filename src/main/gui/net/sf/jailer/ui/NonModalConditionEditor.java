@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 the original author or authors.
+ * Copyright 2007 - 2019 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,7 +41,6 @@ import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
 import javax.swing.JScrollPane;
 import javax.swing.JSeparator;
-import javax.swing.SwingUtilities;
 
 import org.fife.rsta.ui.EscapableDialog;
 
@@ -321,7 +320,7 @@ public abstract class NonModalConditionEditor extends EscapableDialog {
         gridBagConstraints.insets = new java.awt.Insets(0, 12, 0, 0);
         jPanel5.add(table1label, gridBagConstraints);
 
-        table1name.setFont(new java.awt.Font("DejaVu Sans", 0, 12)); // NOI18N
+        table1name.setFont(table1name.getFont().deriveFont(table1name.getFont().getSize()+1f));
         table1name.setText("jLabel1");
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 3;
@@ -330,7 +329,7 @@ public abstract class NonModalConditionEditor extends EscapableDialog {
         gridBagConstraints.weightx = 1.0;
         jPanel5.add(table1name, gridBagConstraints);
 
-        table1dropDown.setFont(new java.awt.Font("DejaVu Sans", 0, 12)); // NOI18N
+        table1dropDown.setFont(table1dropDown.getFont().deriveFont(table1dropDown.getFont().getSize()+1f));
         table1dropDown.setText("jLabel1");
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 2;
@@ -344,7 +343,7 @@ public abstract class NonModalConditionEditor extends EscapableDialog {
         gridBagConstraints.insets = new java.awt.Insets(0, 12, 0, 0);
         jPanel5.add(table2label, gridBagConstraints);
 
-        table2name.setFont(new java.awt.Font("DejaVu Sans", 0, 12)); // NOI18N
+        table2name.setFont(table2name.getFont().deriveFont(table2name.getFont().getSize()+1f));
         table2name.setText("jLabel2");
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 3;
@@ -353,7 +352,7 @@ public abstract class NonModalConditionEditor extends EscapableDialog {
         gridBagConstraints.weightx = 1.0;
         jPanel5.add(table2name, gridBagConstraints);
 
-        table2dropDown.setFont(new java.awt.Font("DejaVu Sans", 0, 12)); // NOI18N
+        table2dropDown.setFont(table2dropDown.getFont().deriveFont(table2dropDown.getFont().getSize()+1f));
         table2dropDown.setText("jLabel2");
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 2;
@@ -392,7 +391,6 @@ public abstract class NonModalConditionEditor extends EscapableDialog {
         jPanel4.setBorder(javax.swing.BorderFactory.createEtchedBorder());
         jPanel4.setLayout(new java.awt.GridBagLayout());
 
-        jLabel2.setForeground(new java.awt.Color(128, 128, 128));
         jLabel2.setText("<html>  <i>Ctrl+Space</i> for code completion. <i>Ctrl+Enter</i> for Ok.</html>");
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 1;
@@ -546,7 +544,7 @@ public abstract class NonModalConditionEditor extends EscapableDialog {
 				provider.addAlias(table2alias, table2);
 			}
 		}
-		SwingUtilities.invokeLater(new Runnable() {
+		UIUtil.invokeLater(new Runnable() {
 			@Override
 			public void run() {
 				editorPane.grabFocus();
