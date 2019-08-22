@@ -13,28 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package net.sf.jailer.ui.undo;
+package net.sf.jailer.database;
 
 /**
- * Compensates a change.
+ * Statements for updates.
  */
-public abstract class CompensationAction {
-
-	final int prio;
-	final String whatHasDone;
-	final String whatToCompensate;
-	final String where;
-	
-	public CompensationAction(int prio, String whatHasDone, String whatToCompensate, String where) {
-		this.prio = prio;
-		this.whatHasDone = whatHasDone;
-		this.whatToCompensate = whatToCompensate;
-		this.where = where;
-	}
-	
-	/**
-	 * Compensates a change.
-	 */
-	public abstract void run();
-
+public enum UPDATE_MODE {
+	PG,
+	MYSQL,
+	MSSQL
 }

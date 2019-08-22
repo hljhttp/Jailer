@@ -102,8 +102,6 @@ import javax.swing.RowSorter.SortKey;
 import javax.swing.SortOrder;
 import javax.swing.SwingUtilities;
 import javax.swing.border.LineBorder;
-import javax.swing.event.CaretEvent;
-import javax.swing.event.CaretListener;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import javax.swing.event.PopupMenuEvent;
@@ -318,11 +316,13 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
 						unhide();
 						if (theSession == null || !theSession.isDown()) {
 							if (!showingLoadErrorNow && shouldShowLoadErrors()) {
-								try {
-									showingLoadErrorNow = true;
-									UIUtil.showException(BrowserContentPane.this, "Error", e);	
-								} finally {
-									showingLoadErrorNow = false;
+								if (getRowBrowser() != null && getRowBrowser().internalFrame != null && getRowBrowser().internalFrame.isVisible()) {
+									try {
+										showingLoadErrorNow = true;
+										UIUtil.showException(BrowserContentPane.this, "Error", e);	
+									} finally {
+										showingLoadErrorNow = false;
+									}
 								}
 							}
 						} else {
@@ -834,7 +834,7 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
 			@Override
 			public void actionPerformed(ActionEvent e) {
 				rowsTable.grabFocus();
-				UIUtil.invokeLater(new Runnable() {
+				UIUtil.invokeLater(8, new Runnable() {
 					@Override
 					public void run() {
 						openQueryBuilder(true);
@@ -1106,50 +1106,78 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
 		rowsTable.addMouseListener(rowTableListener);
 		rowsTableScrollPane.addMouseListener(rowTableListener);
 		singleRowViewScrollContentPanel.addMouseListener(rowTableListener);
-		
-		((JTextField) andCondition.getEditor().getEditorComponent()).addCaretListener(new CaretListener() {
-			@Override
-			public void caretUpdate(CaretEvent e) {
-				System.out.println(e);
-			}
-		});
-		
+
 		dropA.setVisible(false);
 		dropB.setVisible(false);
 		
 		openEditorButton.setIcon(UIUtil.scaleIcon(this, conditionEditorIcon));
 		openEditorButton.setText(null);
+		
+		final Runnable openConditionEditor = new Runnable() {
+			@Override
+			public void run() {
+				openConditionEditor();
+			}
+
+			public void openConditionEditor() {
+				openEditorButton.setSelected(true);
+				final Point pos = new Point(andCondition.getX(), andCondition.getY());
+				SwingUtilities.convertPointToScreen(pos, andCondition.getParent());
+				andConditionEditor.setLocationAndFit(pos);
+				andConditionEditor.edit(getAndConditionText(), "Table", "A", table, null, null, null, false, true);
+			}
+		};
+
+		final Runnable createConditionEditor = new Runnable() {
+			@Override
+			public void run() {
+				createConditionEditor();
+			}
+
+			public void createConditionEditor() {
+				if (andConditionEditor == null) {
+					andConditionEditor = new DBConditionEditor(parentFrame, dataModel) {
+						@Override
+						protected void consume(String cond) {
+							if (cond != null) {
+								if (!getAndConditionText().equals((cond))) {
+									setAndCondition((cond), true);
+									loadButton.grabFocus();
+									reloadRows();
+								}
+							}
+							openEditorButton.setSelected(false);
+						}
+					};
+					if (andCondition.getEditor().getEditorComponent() instanceof JTextField) {
+						andConditionEditor.observe((JTextField) andCondition.getEditor().getEditorComponent(), openConditionEditor);
+					}
+				}
+			}
+		};
+		
 		openEditorButton.addActionListener(new ActionListener() {
 			@Override
 			public void actionPerformed(ActionEvent e) {
-				final Point pos = new Point(andCondition.getX(), andCondition.getY());
-				SwingUtilities.convertPointToScreen(pos, andCondition.getParent());
 				loadButton.grabFocus();
 				UIUtil.invokeLater(new Runnable() {
 					@Override
 					public void run() {
-						if (andConditionEditor == null) {
-							andConditionEditor = new DBConditionEditor(parentFrame, dataModel) {
-								@Override
-								protected void consume(String cond) {
-									if (cond != null) {
-										if (!getAndConditionText().equals((cond))) {
-											setAndCondition((cond), true);
-											loadButton.grabFocus();
-											reloadRows();
-										}
-									}
-									openEditorButton.setSelected(false);
-								}
-							};
-						}
-						openEditorButton.setSelected(true);
-						andConditionEditor.setLocationAndFit(pos);
-						andConditionEditor.edit(getAndConditionText(), "Table", "A", table, null, null, null, false, true);
+						createConditionEditor.run();
+						openConditionEditor.run();
 					}
 				});
 			}
 		});
+		if (andCondition.getEditor().getEditorComponent() instanceof JTextField) {
+			DBConditionEditor.initialObserve((JTextField) andCondition.getEditor().getEditorComponent(), new Runnable() {
+				@Override
+				public void run() {
+					createConditionEditor.run();
+					andConditionEditor.doCompletion((JTextField) andCondition.getEditor().getEditorComponent(), openConditionEditor);
+				}
+			});
+		}
 		relatedRowsLabel.setIcon(UIUtil.scaleIcon(this, relatedRowsIcon));
 		relatedRowsLabel.setFont(relatedRowsLabel.getFont().deriveFont(relatedRowsLabel.getFont().getSize() * 1.1f));
 		if (createPopupMenu(null, -1, 0, 0, false).getComponentCount() == 0) {
@@ -1401,6 +1429,10 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
 	}
 
 	String getAndConditionText() {
+		if (andCondition.getEditor() != null && (andCondition.getEditor().getEditorComponent() instanceof JTextField)) {
+			JTextField f = ((JTextField) andCondition.getEditor().getEditorComponent());
+			return f.getText();
+		}
 		Object sel = andCondition.getSelectedItem();
 		if (sel == null) {
 			return "";
@@ -1429,8 +1461,13 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
 					.getUnrestrictedJoinCondition());
 			updateWhereField();
 			join.setToolTipText(join.getText());
-			on.setToolTipText(on.getText());
+			on.setToolTipText(assocToolTip(on.getText(), this.association));
 		}
+	}
+
+	private static String assocToolTip(String condition, Association assoc) {
+		return "<html>" + UIUtil.toHTMLFragment(condition, 0) + "<br><hr>FK:&nbsp;<i>"
+				+ UIUtil.toHTML(assoc.reversed? assoc.reversalAssociation.getName() : assoc.getName(), 0) + "</i></html>";
 	}
 
 	private class AllNonEmptyItem extends JMenuItem {
@@ -1606,7 +1643,7 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
 			} else {
 				c = '3';
 			}
-			String name = c + a.getDataModel().getDisplayName(a.destination) + (n > 1 ? " on " + a.getName() : "");
+			String name = c + a.getDataModel().getDisplayName(a.destination) + (n > 1 ? " (" + (a.reversed? a.reversalAssociation.getName() : a.getName()) + ")": "");
 			assList.add(name);
 			assMap.put(name, a);
 		}
@@ -2675,7 +2712,7 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
 			++l;
 
 			final JMenuItem item = new JMenuItem("  " + (name.substring(1)) + "   ");
-			item.setToolTipText(association.getUnrestrictedJoinCondition());
+			item.setToolTipText(assocToolTip(association.getUnrestrictedJoinCondition(), association));
 			final JLabel countLabel = new JLabel(". >99999 ") {
 				@Override
 				public void paint(Graphics g) {
@@ -4384,7 +4421,6 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
         jLabel1 = new javax.swing.JLabel();
         jLabel4 = new javax.swing.JLabel();
         jLabel3 = new javax.swing.JLabel();
-        jPanel3 = new javax.swing.JPanel();
         rrPanel = new javax.swing.JPanel();
         relatedRowsPanel = new javax.swing.JPanel();
         relatedRowsLabel = new javax.swing.JLabel();
@@ -4811,6 +4847,7 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
         gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
         gridBagConstraints.anchor = java.awt.GridBagConstraints.WEST;
         gridBagConstraints.weightx = 1.0;
+        gridBagConstraints.weighty = 1.0;
         menuPanel.add(onPanel, gridBagConstraints);
 
         joinPanel.setMinimumSize(new java.awt.Dimension(66, 17));
@@ -4837,8 +4874,9 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
         gridBagConstraints.gridy = 5;
         gridBagConstraints.gridwidth = 4;
         gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
-        gridBagConstraints.anchor = java.awt.GridBagConstraints.SOUTHWEST;
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.WEST;
         gridBagConstraints.weightx = 1.0;
+        gridBagConstraints.weighty = 1.0;
         menuPanel.add(joinPanel, gridBagConstraints);
 
         jPanel10.setMinimumSize(new java.awt.Dimension(66, 17));
@@ -4866,6 +4904,7 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
         gridBagConstraints.gridy = 4;
         gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
         gridBagConstraints.weightx = 1.0;
+        gridBagConstraints.weighty = 1.0;
         menuPanel.add(jPanel10, gridBagConstraints);
 
         jLabel1.setText(" Join ");
@@ -4873,6 +4912,7 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
         gridBagConstraints.gridx = 2;
         gridBagConstraints.gridy = 5;
         gridBagConstraints.anchor = java.awt.GridBagConstraints.WEST;
+        gridBagConstraints.weighty = 1.0;
         menuPanel.add(jLabel1, gridBagConstraints);
 
         jLabel4.setText(" On ");
@@ -4881,6 +4921,7 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
         gridBagConstraints.gridy = 6;
         gridBagConstraints.gridwidth = 2;
         gridBagConstraints.anchor = java.awt.GridBagConstraints.WEST;
+        gridBagConstraints.weighty = 1.0;
         menuPanel.add(jLabel4, gridBagConstraints);
 
         jLabel3.setText(" From ");
@@ -4888,15 +4929,8 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
         gridBagConstraints.gridx = 2;
         gridBagConstraints.gridy = 4;
         gridBagConstraints.anchor = java.awt.GridBagConstraints.WEST;
+        gridBagConstraints.weighty = 1.0;
         menuPanel.add(jLabel3, gridBagConstraints);
-
-        jPanel3.setLayout(new javax.swing.BoxLayout(jPanel3, javax.swing.BoxLayout.LINE_AXIS));
-        gridBagConstraints = new java.awt.GridBagConstraints();
-        gridBagConstraints.gridx = 4;
-        gridBagConstraints.gridy = 9;
-        gridBagConstraints.gridwidth = 2;
-        gridBagConstraints.anchor = java.awt.GridBagConstraints.WEST;
-        menuPanel.add(jPanel3, gridBagConstraints);
 
         rrPanel.setLayout(new java.awt.GridBagLayout());
 
@@ -4913,6 +4947,7 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
         gridBagConstraints.fill = java.awt.GridBagConstraints.BOTH;
         gridBagConstraints.weightx = 1.0;
         gridBagConstraints.weighty = 1.0;
+        gridBagConstraints.insets = new java.awt.Insets(1, 3, 1, 3);
         relatedRowsPanel.add(relatedRowsLabel, gridBagConstraints);
 
         gridBagConstraints = new java.awt.GridBagConstraints();
@@ -4922,19 +4957,24 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
         gridBagConstraints.fill = java.awt.GridBagConstraints.BOTH;
         gridBagConstraints.anchor = java.awt.GridBagConstraints.EAST;
         gridBagConstraints.weighty = 1.0;
-        gridBagConstraints.insets = new java.awt.Insets(2, 0, 4, 0);
+        gridBagConstraints.insets = new java.awt.Insets(2, 0, 2, 0);
         rrPanel.add(relatedRowsPanel, gridBagConstraints);
 
+        sqlPanel.setBackground(new java.awt.Color(255, 243, 210));
         sqlPanel.setBorder(new javax.swing.border.SoftBevelBorder(javax.swing.border.BevelBorder.RAISED));
-        sqlPanel.setLayout(new javax.swing.BoxLayout(sqlPanel, javax.swing.BoxLayout.LINE_AXIS));
+        sqlPanel.setLayout(new java.awt.GridBagLayout());
 
-        sqlLabel1.setText(" Menu ");
-        sqlPanel.add(sqlLabel1);
+        sqlLabel1.setForeground(new java.awt.Color(1, 0, 0));
+        sqlLabel1.setText("  Menu  ");
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.insets = new java.awt.Insets(1, 3, 1, 3);
+        sqlPanel.add(sqlLabel1, gridBagConstraints);
 
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 8;
         gridBagConstraints.gridy = 5;
         gridBagConstraints.anchor = java.awt.GridBagConstraints.NORTHEAST;
+        gridBagConstraints.insets = new java.awt.Insets(0, 0, 2, 0);
         rrPanel.add(sqlPanel, gridBagConstraints);
 
         gridBagConstraints = new java.awt.GridBagConstraints();
@@ -4960,6 +5000,7 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 3;
         gridBagConstraints.gridy = 4;
+        gridBagConstraints.weighty = 1.0;
         menuPanel.add(dropA, gridBagConstraints);
 
         dropB.setFont(dropB.getFont().deriveFont(dropB.getFont().getStyle() | java.awt.Font.BOLD, dropB.getFont().getSize()+2));
@@ -4967,6 +5008,7 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 3;
         gridBagConstraints.gridy = 5;
+        gridBagConstraints.weighty = 1.0;
         menuPanel.add(dropB, gridBagConstraints);
 
         jPanel14.setLayout(new java.awt.GridBagLayout());
@@ -5065,7 +5107,6 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
     private javax.swing.JPanel jPanel13;
     private javax.swing.JPanel jPanel14;
     private javax.swing.JPanel jPanel2;
-    private javax.swing.JPanel jPanel3;
     private javax.swing.JPanel jPanel4;
     private javax.swing.JPanel jPanel5;
     private javax.swing.JPanel jPanel6;
@@ -5110,18 +5151,12 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
 	JPanel thumbnail;
 	private DBConditionEditor andConditionEditor;
 	private ImageIcon conditionEditorIcon;
-	private Icon conditionEditorSelectedIcon;
 	{
 		String dir = "/net/sf/jailer/ui/resource";
 
 		// load images
 		try {
 			conditionEditorIcon = new ImageIcon(getClass().getResource(dir + "/edit.png"));
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-		try {
-			conditionEditorSelectedIcon = new ImageIcon(getClass().getResource(dir + "/edit_s.png"));
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
@@ -5749,6 +5784,4 @@ public abstract class BrowserContentPane extends javax.swing.JPanel {
 		return value;
 	}
 
-	// TODO cntrl-enter in modified "where"-combobox put old content into SQL-console
-	
 }

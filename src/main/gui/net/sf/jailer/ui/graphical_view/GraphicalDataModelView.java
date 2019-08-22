@@ -59,6 +59,7 @@ import net.sf.jailer.ui.ExpansionLimitMessage;
 import net.sf.jailer.ui.ExtractionModelEditor;
 import net.sf.jailer.ui.QueryBuilderDialog;
 import net.sf.jailer.ui.UIUtil;
+import net.sf.jailer.ui.databrowser.DataBrowser;
 import net.sf.jailer.ui.scrollmenu.JScrollMenu;
 import net.sf.jailer.ui.scrollmenu.JScrollPopupMenu;
 import net.sf.jailer.ui.undo.CompensationAction;
@@ -1055,7 +1056,11 @@ public class GraphicalDataModelView extends JPanel {
 			display.invalidate();
 			modelEditor.markDirty();
 		}
-		modelEditor.getUndoManager().push(new CompensationAction(1, "changed exclude mode (" + (old == null? "Default" : old? "Yes" : "No") + ")", model.getDisplayName(table)) {
+		modelEditor.getUndoManager().push(new CompensationAction(
+				1,
+				"changed exclude mode (" + (mode == null? "Default" : mode? "Yes" : "No") + ")",
+				"changed exclude mode (" + (old == null? "Default" : old? "Yes" : "No") + ")",
+				model.getDisplayName(table)) {
 			@Override
 			public void run() {
 				changeExcludeFromDeletion(old, table);
@@ -1071,7 +1076,11 @@ public class GraphicalDataModelView extends JPanel {
 			display.invalidate();
 			modelEditor.markDirty();
 		}
-		modelEditor.getUndoManager().push(new CompensationAction(1, "changed export mode(" + (old == null? "Default" : !old? "Insert" : "Upsert") + ")", model.getDisplayName(table)) {
+		modelEditor.getUndoManager().push(new CompensationAction(
+				1,
+				"changed export mode (" + (mode == null? "Default" : !mode? "Insert" : "Upsert") + ")",
+				"changed export mode (" + (old == null? "Default" : !old? "Insert" : "Upsert") + ")",
+				model.getDisplayName(table)) {
 			@Override
 			public void run() {
 				changeExportMode(old, table);
@@ -2131,7 +2140,26 @@ public class GraphicalDataModelView extends JPanel {
 	 * @param usePath if <code>true</code>, immediately build query based on selected path
 	   */
 	public void openQueryBuilder(Table table, boolean usePath) {
-		new QueryBuilderDialog(this.modelEditor.extractionModelFrame).buildQuery(table, usePath, true, associationsOnPath, null, model, null, null, false);
+		final QueryBuilderDialog queryBuilderDialog = new QueryBuilderDialog(this.modelEditor.extractionModelFrame);
+		queryBuilderDialog.sqlEditButton.setVisible(true);
+		queryBuilderDialog.sqlEditButton.addActionListener(new ActionListener() {
+			@Override
+			public void actionPerformed(ActionEvent e) {
+				final DataBrowser dataBrowser = modelEditor.extractionModelFrame.openDataBrowser(root, "");
+				if (dataBrowser != null) {
+					dataBrowser.getSqlConsole(true).appendStatement(queryBuilderDialog.getSQL() + UIUtil.LINE_SEPARATOR + ";", true);
+					queryBuilderDialog.setVisible(false);
+					queryBuilderDialog.dispose();
+					UIUtil.invokeLater(new Runnable() {
+						@Override
+						public void run() {
+							dataBrowser.toFront();
+						}
+					});
+				}
+			}
+		});
+		queryBuilderDialog.buildQuery(table, usePath, true, associationsOnPath, null, model, null, null, false);
 	}
 
 	/**

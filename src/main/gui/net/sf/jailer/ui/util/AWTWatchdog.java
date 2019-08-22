@@ -50,11 +50,7 @@ public class AWTWatchdog {
 								}
 								dump = JailerVersion.VERSION + " " + dump;
 								Session._log.error(dump);
-								final int MAX_CL = 1000;
 					            String iMsg = dump;
-					            if (iMsg.length() > MAX_CL) {
-					            	iMsg = iMsg.substring(0, MAX_CL);
-					            }
 								UIUtil.sendIssue("AWTHanging", iMsg);
 								issueSent = true;
 							}
@@ -112,7 +108,14 @@ public class AWTWatchdog {
 				int i = 0;
 				for (; i < ti.getStackTrace().length; i++) {
 					StackTraceElement ste = ti.getStackTrace()[i];
-					sb.append("\tat " + ste.toString());
+					
+					String s = ste.getClassName() + "." + ste.getMethodName() + "(" +
+			             (ste.isNativeMethod() ? "Native Method)" :
+			              (ste.getFileName() != null &&ste.getLineNumber() >= 0 ?
+			            		  ste.getFileName() + ":" + ste.getLineNumber() + ")" :
+			                (ste.getFileName() != null ?  "" + ste.getFileName() + ")" : "Unknown Source)")));
+					
+					sb.append(" at " + s);
 					sb.append('\n');
 					if (i == 0 && ti.getLockInfo() != null) {
 						Thread.State ts = ti.getThreadState();
@@ -139,7 +142,7 @@ public class AWTWatchdog {
 							sb.append('\n');
 						}
 					}
-					if (i == 0 && !ste.toString().contains(pck)) {
+					if (i == 2 && !ste.toString().contains(pck)) {
 						sb.append(mrk);
 					}
 				}
@@ -159,16 +162,17 @@ public class AWTWatchdog {
 				}
 				sb.append('\n');
 
-				String dump = Pattern.compile(mrk + "(?d)(.*?)\\b" + pckPtrn, Pattern.DOTALL).matcher(sb.toString()).replaceFirst(".. at " + pck);
-				System.err.print("Error: AWT-Thread hanging: " + dump);
+				String dump = Pattern.compile(mrk + "(?d)([^\\n]*\\n[^\\n]*\\n)(.*?)\\b" + pckPtrn, Pattern.DOTALL).matcher(sb.toString()).replaceFirst("..$1at " + pck);
+				dump = dump
+						.replace(" at java.", "atj..")
+						.replace(" at javax.swing.", "atjs..")
+						.replace(" at net.sf.jailer.", "atn..")
+						.replaceAll("\\s*(\\n)\\s*", "$1");
 				return dump;
 			}
 		}
 		return "no awt-thread?";
 	}
-
-	// TODO compress stacktrace and increase http-get-max-size
-	// TODO: more non-jailer context
 
 	private static long starttime = 0;
 

@@ -37,6 +37,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.sql.DataSource;
 
@@ -335,7 +336,8 @@ public class Session {
 			}
 			try {
 				con.close();
-			} catch (SQLException e) {
+			// catch all because ucanaccess throws non-SQLException
+			} catch (Throwable e) { // SQLException e) {
 				// ignore
 			}
 			connection.set(null);
@@ -354,7 +356,8 @@ public class Session {
 			}
 			try {
 				temporaryTableSession.close();
-			} catch (SQLException e) {
+				// catch all because ucanaccess throws non-SQLException
+			} catch (Throwable e) { // SQLException e) {
 				// ignore
 			}
 			temporaryTableSession = null;
@@ -935,15 +938,13 @@ public class Session {
 		return mData;
 	}
 
-	protected boolean down = false;
-	
+	protected AtomicBoolean down = new AtomicBoolean(false);
+
 	/**
 	 * Closes all connections.
 	 */
 	public void shutDown() throws SQLException {
-		synchronized (this) {
-			down = true;
-		}
+		down.set(true);
 		_log.info("closing connections... (" + connections.size() + ")");
 		for (Connection con: connections) {
 			try {
@@ -956,8 +957,8 @@ public class Session {
 		_log.info("connection closed");
 	}
 
-	public synchronized boolean isDown() {
-		return down;
+	public boolean isDown() {
+		return down.get();
 	}
 
 	/**

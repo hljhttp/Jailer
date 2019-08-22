@@ -32,6 +32,7 @@ import javax.sql.DataSource;
 import org.apache.log4j.Logger;
 
 import net.sf.jailer.configuration.Configuration;
+import net.sf.jailer.configuration.DBMS;
 import net.sf.jailer.database.BasicDataSource;
 import net.sf.jailer.database.Session;
 import net.sf.jailer.datamodel.Association;
@@ -114,7 +115,7 @@ public class Jailer {
 		}
 		boolean ok = true;
 		try {
-			jailerMain(args, new StringBuffer(), null);
+			jailerMain(args, new StringBuffer(), null, true);
 		} catch (Throwable t) {
 			// Exception has already been logged
 			ok = false;
@@ -140,7 +141,7 @@ public class Jailer {
 	 * @param progressListener listens to progess events, may be <code>null</code>
 	 * @return <code>false</code> iff something went wrong
 	 */
-	public static boolean jailerMain(String[] args, StringBuffer warnings, ProgressListener progressListener) throws Exception {
+	public static boolean jailerMain(String[] args, StringBuffer warnings, ProgressListener progressListener, boolean fromCli) throws Exception {
 		CancellationHandler.reset(null);
 
 		try {
@@ -249,16 +250,38 @@ public class Jailer {
 					findAssociation(commandLine.arguments.get(1), commandLine.arguments.get(2), commandLine.arguments.subList(3, commandLine.arguments.size()), commandLine.undirected, executionContext);
 				}
 			} else if ("create-ddl".equalsIgnoreCase(command)) {
+				String extractionModelFileName = null;
+				if (!commandLine.independentWorkingTables && commandLine.arguments.size() > 5) {
+					extractionModelFileName = commandLine.arguments.get(5);
+				} else if (!commandLine.independentWorkingTables && commandLine.arguments.size() > 1) {
+					extractionModelFileName = commandLine.arguments.get(1);
+				}
+				if ("datamodel".equals(commandLine.datamodelFolder) && extractionModelFileName == null
+						||
+					!"datamodel".equals(commandLine.datamodelFolder) && extractionModelFileName != null) {
+					if (fromCli) {
+						throw new RuntimeException("Please specify either a data model (e.g., \"-datamodel datamodel/Demo-Scott\") or an extraction model (But not both)");
+					}
+				}
+				if (commandLine.targetDBMS == null) {
+					List<DBMS> dbmss = Configuration.getInstance().getDBMS();
+					System.err.println("");
+					System.err.println("Warning: No DBMS specified (\"-target-dbms\". The worktables are potentially suboptimal. Perfomance could suffer. Known DBMS are:");
+					for (DBMS dbms: dbmss) {
+						if (dbms.getId() != null) {
+							System.err.println(dbms.getId());
+						}
+					}
+					System.err.println("");
+				}
 				if (commandLine.arguments.size() >= 5) {
 					if (!commandLine.independentWorkingTables && commandLine.arguments.size() > 5) {
-						String extractionModelFileName = commandLine.arguments.get(5);
 						PrimaryKeyFactory.createUPKScope(extractionModelFileName, executionContext);
 					}
 					BasicDataSource dataSource = new BasicDataSource(commandLine.arguments.get(1), commandLine.arguments.get(2), commandLine.arguments.get(3), commandLine.arguments.get(4), 0, jdbcJarURLs);
 					return new DDLCreator(executionContext).createDDL(dataSource, dataSource.dbms, executionContext.getScope(), commandLine.workingTableSchema);
 				}
 				if (!commandLine.independentWorkingTables && commandLine.arguments.size() > 1) {
-					String extractionModelFileName = commandLine.arguments.get(1);
 					PrimaryKeyFactory.createUPKScope(extractionModelFileName, executionContext);
 				}
 				return new DDLCreator(executionContext).createDDL((DataSource) null, null, executionContext.getScope(), commandLine.workingTableSchema);

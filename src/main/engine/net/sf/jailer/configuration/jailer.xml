@@ -47,6 +47,25 @@
     <!-- additional SQL keywords -->
 	<additionalSQLKeywords>sensitive, datetime</additionalSQLKeywords>
 
+	<!-- IBM JDBC Connector -->
+	<urlRewriteRule>
+		<pattern>^jdbc:ibm:(.*)$</pattern>
+		<replacement>jdbc:$1</replacement>
+	</urlRewriteRule>
+
+	<!-- other rules
+	<urlRewriteRule>
+		<pattern></pattern>
+		<replacement></replacement>
+	</urlRewriteRule>
+	-->
+
+	<!--
+		Also include 'null's in the generated upsert statements. 
+		Useful if a column contains 'null', but its default value is non-null.
+	<generateUpsertStatementsWithoutNulls>false</generateUpsertStatementsWithoutNulls>
+	-->
+
     <!-- for Oracle -->
     <dbms>
         <id>ORACLE</id>
@@ -216,6 +235,7 @@ union all
             <supportsInClauseForDeletes>false</supportsInClauseForDeletes>
             <supportsMultiRowInserts>true</supportsMultiRowInserts>
             <upsertMode>DB2</upsertMode>
+            <updateMode>MSSQL</updateMode>
         </sqlDialect>
         <statisticRenovator>
             <scriptFileName>script/mssql/update_statistics.sql</scriptFileName>
@@ -358,7 +378,8 @@ union all
             <needsValuesKeywordForDeletes>false</needsValuesKeywordForDeletes>
             <supportsInClauseForDeletes>true</supportsInClauseForDeletes>
             <supportsMultiRowInserts>true</supportsMultiRowInserts>
-            <upsertMode>FROM_DUAL</upsertMode>
+            <upsertMode>UNION_ALL</upsertMode>
+            <updateMode>MYSQL</updateMode>
         </sqlDialect>
         <jdbcProperties>
             <entry>
@@ -531,13 +552,15 @@ union all
     <!-- for MariaDB -->
     <dbms>
         <id>MariaDB</id>
+        <familyId>MySQL</familyId>
         <displayName>MariaDB</displayName>
         <urlPattern>jdbc:mariadb.*</urlPattern>
         <sqlDialect>
             <needsValuesKeywordForDeletes>false</needsValuesKeywordForDeletes>
             <supportsInClauseForDeletes>true</supportsInClauseForDeletes>
             <supportsMultiRowInserts>true</supportsMultiRowInserts>
-            <upsertMode>FROM_DUAL</upsertMode>
+            <upsertMode>UNION_ALL</upsertMode>
+            <updateMode>MYSQL</updateMode>
         </sqlDialect>
         <jdbcProperties>
             <entry>
@@ -1164,6 +1187,7 @@ Select CNAME, TNAME, COLNAME, CTYPE, DETAIL From
             <supportsInClauseForDeletes>true</supportsInClauseForDeletes>
             <supportsMultiRowInserts>true</supportsMultiRowInserts>
             <upsertMode>DB2</upsertMode>
+            <updateMode>PG</updateMode>
         </sqlDialect>
         <statisticRenovator>
             <scriptFileName>script/postgres/update_statistics.sql</scriptFileName>
@@ -1206,7 +1230,7 @@ Select CNAME, TNAME, COLNAME, CTYPE, DETAIL From
         <fetchSize>1000</fetchSize>
 
         <!-- NOLOGGING, TABLESPACE-spec., etc. -->
-        <tableProperties></tableProperties>
+        <tableProperties>CREATE UNLOGGED TABLE</tableProperties>
         
         <sessionTemporaryTableManager>
             <createIndexPrefix>CREATE INDEX </createIndexPrefix>
@@ -1308,6 +1332,7 @@ union all
     <!-- for Amazon Redshift -->
     <dbms>
         <id>Redshift</id>
+        <familyId>POSTGRESQL</familyId>
         <displayName>Redshift</displayName>
         <urlPattern>jdbc:redshift.*</urlPattern>
         <sqlDialect>
@@ -1357,7 +1382,7 @@ union all
         <fetchSize>1000</fetchSize>
 
         <!-- NOLOGGING, TABLESPACE-spec., etc. -->
-        <tableProperties></tableProperties>
+        <tableProperties>CREATE UNLOGGED TABLE</tableProperties>
         
         <sessionTemporaryTableManager>
             <createIndexPrefix>CREATE INDEX </createIndexPrefix>
@@ -1603,7 +1628,7 @@ union all
             <needsValuesKeywordForDeletes>false</needsValuesKeywordForDeletes>
             <supportsInClauseForDeletes>false</supportsInClauseForDeletes>
             <supportsMultiRowInserts>false</supportsMultiRowInserts>
-            <upsertMode>FROM_JL_DUAL</upsertMode>
+            <upsertMode>UNION_ALL</upsertMode>
         </sqlDialect>
         <typeReplacement>
             <entry>
@@ -1669,7 +1694,7 @@ union all
             <needsValuesKeywordForDeletes>false</needsValuesKeywordForDeletes>
             <supportsInClauseForDeletes>true</supportsInClauseForDeletes>
             <supportsMultiRowInserts>true</supportsMultiRowInserts>
-            <upsertMode>FROM_DUAL</upsertMode>
+            <upsertMode>UNION_ALL</upsertMode>
         </sqlDialect>
         <jdbcProperties>
             <entry>

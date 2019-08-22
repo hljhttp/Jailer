@@ -54,6 +54,7 @@ public class SessionForUI extends Session {
 		Thread thread = new Thread(new Runnable() {
 			@Override
 			public void run() {
+				Session.setThreadSharesConnection();
 				try {
 					Connection newCon = session.connectionFactory.getConnection();
 					if (session.cancelled.get()) {
@@ -144,9 +145,7 @@ public class SessionForUI extends Session {
 	 */
 	@Override
 	public void shutDown() throws SQLException {
-		synchronized (this) {
-			down = true;
-		}
+		down.set(true);
 		Thread thread = new Thread(new Runnable() {
 			@Override
 			public void run() {

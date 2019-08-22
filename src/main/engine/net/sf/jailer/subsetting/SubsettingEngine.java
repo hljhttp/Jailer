@@ -519,7 +519,9 @@ public class SubsettingEngine {
 				return new LiquibaseXMLTransformer.Factory(transformerHandler,targetSession.getMetaData(), entityGraph, filepath,
 						executionContext.getXmlDatePattern(),
 						executionContext.getXmlTimePattern(),
-						executionContext.getXmlTimeStampPattern(), executionContext);
+						executionContext.getXmlTimeStampPattern(),
+						targetSession,
+						executionContext);
 			} else {
 				return new DMLTransformer.Factory(outputWriter, executionContext.getUpsertOnly(), executionContext.getNumberOfEntities(), targetSession, targetDBMSConfiguration(targetSession), executionContext);
 			}
@@ -1437,8 +1439,8 @@ public class SubsettingEngine {
 			afterCollectionTimestamp = System.currentTimeMillis();
 			
 			if (explain) {
-				executionContext.getProgressListenerRegistry().fireNewStage("generating explain-log", false, false);
-				ExplainTool.explain(entityGraph, session, executionContext);
+//				executionContext.getProgressListenerRegistry().fireNewStage("generating explain-log", false, false);
+//				ExplainTool.explain(entityGraph, session, executionContext);
 			}
 	
 			totalProgress = datamodel.normalize(totalProgress);
