@@ -232,7 +232,7 @@ public class Session {
 	public Session(DataSource dataSource, DBMS dbms, Integer isolationLevel, final WorkingTableScope scope, boolean transactional) throws SQLException {
 		this(dataSource, dbms, isolationLevel, scope, transactional, false);
 	}
-	
+
 	/**
 	 * Constructor.
 	 * 
@@ -249,7 +249,7 @@ public class Session {
 		this.dbUrl = (dataSource instanceof BasicDataSource)? ((BasicDataSource) dataSource).dbUrl : null;
 		this.schema = (dataSource instanceof BasicDataSource)? ((BasicDataSource) dataSource).dbUser : "";
 		this.temporaryTableScope = scope;
-		
+
 		connectionFactory = new ConnectionFactory() {
 			private Connection defaultConnection = null;
 			private Random random = new Random();
@@ -272,6 +272,9 @@ public class Session {
 						} else if (defaultConnection != null) {
 							// fall back to default connection
 							con = defaultConnection;
+						} else if (globalFallbackConnection != null) {
+							// fall back to global default connection
+							con = globalFallbackConnection;
 						} else {
 							throw e;
 						}
@@ -296,15 +299,17 @@ public class Session {
 					} else {
 						connection.set(con);
 						boolean addCon = true;
-						synchronized (connections) {
-							for (Connection c: connections) {
-								if (c == con) {
-									addCon = false;
-									break;
+						if (con != globalFallbackConnection) {
+							synchronized (connections) {
+								for (Connection c: connections) {
+									if (c == con) {
+										addCon = false;
+										break;
+									}
 								}
-							}
-							if (addCon) {
-								connections.add(con);
+								if (addCon) {
+									connections.add(con);
+								}
 							}
 						}
 					}
@@ -523,6 +528,13 @@ public class Session {
 			CancellationHandler.begin(statement, context);
 			ResultSet resultSet;
 			try {
+				if (limit > 0) {
+					statement.setMaxRows(limit + 1);
+				}
+			} catch (Exception e) {
+				// ignore
+			}
+			try {
 				if (timeout > 0) {
 					statement.setQueryTimeout(timeout);
 				}
@@ -696,7 +708,8 @@ public class Session {
 					CancellationHandler.checkForCancellation(null);
 					CancellationHandler.end(statement, null);
 
-					boolean deadlock = "40001".equals(e.getSQLState()); // "serialization failure", see https://en.wikipedia.org/wiki/SQLSTATE
+					String sqlState = e.getSQLState();
+					boolean deadlock = sqlState != null && sqlState.matches("40.01"); // "serialization failure", see https://en.wikipedia.org/wiki/SQLSTATE
 					boolean crf = DBMS.ORACLE.equals(dbms) && e.getErrorCode() == 8176; // ORA-08176: consistent read failure; rollback data not available
 					
 					if (++failures > maximumNumberOfFailures || !(deadlock || crf)) {
@@ -868,7 +881,7 @@ public class Session {
 	 * @param sql the SQL-Statement
 	 */
 	public long execute(String sql) throws SQLException {
-		return execute(sql, null);
+		return execute(sql, null, false);
 	}
 
 	/**
@@ -876,7 +889,7 @@ public class Session {
 	 * 
 	 * @param sql the SQL-Statement
 	 */
-	public long execute(String sql, Object cancellationContext) throws SQLException {
+	public long execute(String sql, Object cancellationContext, boolean acceptQueries) throws SQLException {
 		if (getLogStatements()) {
 			_log.info(sql);
 		}
@@ -887,7 +900,15 @@ public class Session {
 			CancellationHandler.checkForCancellation(cancellationContext);
 			statement = connectionFactory.getConnection().createStatement();
 			CancellationHandler.begin(statement, cancellationContext);
-			rc = statement.executeUpdate(sql);
+			if (acceptQueries) {
+				if (statement.execute(sql)) {
+					statement.getResultSet().close();
+				} else {
+					rc = statement.getUpdateCount();
+				}
+			} else {
+				rc = statement.executeUpdate(sql);
+			}
 			if (getLogStatements()) {
 				_log.info("" + rc + " row(s) in " + (System.currentTimeMillis() - startTime) + " ms");
 			}
@@ -943,7 +964,7 @@ public class Session {
 	/**
 	 * Closes all connections.
 	 */
-	public void shutDown() throws SQLException {
+	public void shutDown() {
 		down.set(true);
 		_log.info("closing connections... (" + connections.size() + ")");
 		for (Connection con: connections) {
@@ -1171,6 +1192,12 @@ public class Session {
 	
 	public static void setThreadSharesConnection() {
 		sharesConnection.set(true);
+	}
+
+	private static volatile Connection globalFallbackConnection = null;
+
+	public static void setGlobalFallbackConnection(Connection globalFallbackConnection) {
+		Session.globalFallbackConnection = globalFallbackConnection;
 	}
 
 }

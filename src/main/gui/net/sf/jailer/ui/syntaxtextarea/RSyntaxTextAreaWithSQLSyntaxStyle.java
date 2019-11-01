@@ -18,7 +18,6 @@ package net.sf.jailer.ui.syntaxtextarea;
 import java.awt.Dialog;
 import java.awt.Font;
 import java.awt.Frame;
-import java.awt.Image;
 import java.awt.Window;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
@@ -63,7 +62,6 @@ import org.fife.ui.rtextarea.SearchResult;
 
 import net.sf.jailer.ui.UIUtil;
 import net.sf.jailer.ui.databrowser.metadata.MDTable;
-import net.sf.jailer.ui.databrowser.metadata.MetaDataPanel;
 import net.sf.jailer.util.Pair;
 
 /**
@@ -105,6 +103,7 @@ public class RSyntaxTextAreaWithSQLSyntaxStyle extends RSyntaxTextArea implement
 		this.withExecuteActions = withExecuteActions;
 		setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_SQL);
 		setAutoIndentEnabled(true);
+		setBracketMatchingEnabled(false);
 		// setTabsEmulated(true);
 		
 		// load images
@@ -289,8 +288,11 @@ public class RSyntaxTextAreaWithSQLSyntaxStyle extends RSyntaxTextArea implement
 	}
 
 	private ImageIcon scaleToLineHeight(ImageIcon imageIcon) {
-		double s = getLineHeight() / (double) imageIcon.getIconHeight();
-		return new ImageIcon(imageIcon.getImage().getScaledInstance((imageIcon.getIconWidth()), (int)(imageIcon.getIconHeight() * s + 0.5), Image.SCALE_SMOOTH));
+		if (imageIcon != null) {
+			double s = getLineHeight() / (double) imageIcon.getIconHeight();
+			return UIUtil.scaleIcon(imageIcon, imageIcon.getIconWidth(), (int)(imageIcon.getIconHeight() * s + 0.5));
+		}
+		return null;
 	}
 
 	protected MDTable getSelectedTable() {
@@ -337,12 +339,16 @@ public class RSyntaxTextAreaWithSQLSyntaxStyle extends RSyntaxTextArea implement
 		menu.add(item, 0);
 		if (selectTableAction != null) {
 			menu.add(new JMenuItem(selectTableAction), 1);
+			menu.add(new JSeparator(), 2);
+		} else {
+			menu.add(new JSeparator(), 1);
 		}
-		menu.add(new JSeparator(), 2);
 
-		menu.add(new JMenuItem(new ShowFindDialogAction()), 0);
-		menu.add(new JMenuItem(new ShowReplaceDialogAction()), 1);
-		menu.add(new JSeparator(), 2);
+		if (withFindAndReplace()) {
+			menu.add(new JMenuItem(new ShowFindDialogAction()), 0);
+			menu.add(new JMenuItem(new ShowReplaceDialogAction()), 1);
+			menu.add(new JSeparator(), 2);
+		}
 
 		if (withExecuteActions) {
 			item = new JMenuItem(runBlock);
@@ -362,6 +368,10 @@ public class RSyntaxTextAreaWithSQLSyntaxStyle extends RSyntaxTextArea implement
 		appendPopupMenu(menu);
 		
 		return menu;
+	}
+
+	protected boolean withFindAndReplace() {
+		return true;
 	}
 
 	protected void appendPopupMenu(JPopupMenu menu) {
@@ -1095,23 +1105,18 @@ public class RSyntaxTextAreaWithSQLSyntaxStyle extends RSyntaxTextArea implement
 	private void loadImages() {
 		if (lastLineHeight == null || lastLineHeight != getLineHeight()) {
 			lastLineHeight = getLineHeight();
-			try {
-				String dir = "/net/sf/jailer/ui/resource";
-				icon = scaleToLineHeight(iconR);
-	    	    iconBegin = scaleToLineHeight(iconBeginR);
-				iconBeginEnd = scaleToLineHeight(iconBeginEndR);
-				iconEnd = scaleToLineHeight(iconEndR);
-				iconf = scaleToLineHeight(iconfR);
-	    	    iconBeginf = scaleToLineHeight(iconBeginfR);
-				iconBeginEndf = scaleToLineHeight(iconBeginEndfR);
-				iconEndf = scaleToLineHeight(iconEndfR);
-				icon2 = scaleToLineHeight(icon2R);
-	    	    iconBegin2 = scaleToLineHeight(iconBegin2R);
-				iconBeginEnd2 = scaleToLineHeight(iconBeginEnd2R);
-				iconEnd2 = scaleToLineHeight(iconEnd2R);
-			} catch (Exception e) {
-				e.printStackTrace();
-			}
+			icon = scaleToLineHeight(iconR);
+    	    iconBegin = scaleToLineHeight(iconBeginR);
+			iconBeginEnd = scaleToLineHeight(iconBeginEndR);
+			iconEnd = scaleToLineHeight(iconEndR);
+			iconf = scaleToLineHeight(iconfR);
+    	    iconBeginf = scaleToLineHeight(iconBeginfR);
+			iconBeginEndf = scaleToLineHeight(iconBeginEndfR);
+			iconEndf = scaleToLineHeight(iconEndfR);
+			icon2 = scaleToLineHeight(icon2R);
+    	    iconBegin2 = scaleToLineHeight(iconBegin2R);
+			iconBeginEnd2 = scaleToLineHeight(iconBeginEnd2R);
+			iconEnd2 = scaleToLineHeight(iconEnd2R);
 		}
 	}
 
@@ -1132,23 +1137,18 @@ public class RSyntaxTextAreaWithSQLSyntaxStyle extends RSyntaxTextArea implement
 	private ImageIcon iconEndf;
 
 	static {
-		try {
-			String dir = "/net/sf/jailer/ui/resource";
-			iconR = new ImageIcon(MetaDataPanel.class.getResource(dir + "/sqlconsole.png"));
-		    iconBeginR = new ImageIcon(MetaDataPanel.class.getResource(dir + "/sqlconsolebegin.png"));
-			iconBeginEndR = new ImageIcon(MetaDataPanel.class.getResource(dir + "/sqlconsolebeginend.png"));
-			iconEndR = new ImageIcon(MetaDataPanel.class.getResource(dir + "/sqlconsoleend.png"));
-			iconfR = new ImageIcon(MetaDataPanel.class.getResource(dir + "/sqlconsolef.png"));
-		    iconBeginfR = new ImageIcon(MetaDataPanel.class.getResource(dir + "/sqlconsolebeginf.png"));
-			iconBeginEndfR = new ImageIcon(MetaDataPanel.class.getResource(dir + "/sqlconsolebeginendf.png"));
-			iconEndfR = new ImageIcon(MetaDataPanel.class.getResource(dir + "/sqlconsoleendf.png"));
-			icon2R = new ImageIcon(MetaDataPanel.class.getResource(dir + "/sqlconsole2.png"));
-		    iconBegin2R = new ImageIcon(MetaDataPanel.class.getResource(dir + "/sqlconsolebegin2.png"));
-			iconBeginEnd2R = new ImageIcon(MetaDataPanel.class.getResource(dir + "/sqlconsolebeginend2.png"));
-			iconEnd2R = new ImageIcon(MetaDataPanel.class.getResource(dir + "/sqlconsoleend2.png"));
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
+		iconR = UIUtil.readImage("/sqlconsole.png");
+	    iconBeginR = UIUtil.readImage("/sqlconsolebegin.png");
+		iconBeginEndR = UIUtil.readImage("/sqlconsolebeginend.png");
+		iconEndR = UIUtil.readImage("/sqlconsoleend.png");
+		iconfR = UIUtil.readImage("/sqlconsolef.png");
+	    iconBeginfR = UIUtil.readImage("/sqlconsolebeginf.png");
+		iconBeginEndfR = UIUtil.readImage("/sqlconsolebeginendf.png");
+		iconEndfR = UIUtil.readImage("/sqlconsoleendf.png");
+		icon2R = UIUtil.readImage("/sqlconsole2.png");
+	    iconBegin2R = UIUtil.readImage("/sqlconsolebegin2.png");
+		iconBeginEnd2R = UIUtil.readImage("/sqlconsolebeginend2.png");
+		iconEnd2R = UIUtil.readImage("/sqlconsoleend2.png");
 	}
 	
 	private static ImageIcon iconR;

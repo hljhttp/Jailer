@@ -18,7 +18,6 @@ package net.sf.jailer.ui;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.GridBagConstraints;
-import java.awt.Image;
 import java.awt.event.MouseEvent;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -554,32 +553,14 @@ public class AdditionalSubjectsDialog extends javax.swing.JDialog {
     private javax.swing.JPanel subjectsPanel;
     // End of variables declaration//GEN-END:variables
 
-	private ImageIcon minusImage = null;
 	private ImageIcon conditionEditorIcon = null;
 	private ImageIcon conditionEditorSelectedIcon = null;
 
 	private boolean ok;
 
 	{
-		String dir = "/net/sf/jailer/ui/resource";
-
 		// load image
-		try {
-			conditionEditorSelectedIcon = new ImageIcon(getClass().getResource(dir + "/edit_s.png"));
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-		try {
-			conditionEditorIcon = new ImageIcon(getClass().getResource(dir + "/edit.png"));
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-		try {
-			minusImage = new ImageIcon(new ImageIcon(getClass().getResource(
-					dir + "/minus.png")).getImage().getScaledInstance(22, 18,
-					Image.SCALE_SMOOTH));
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
+		conditionEditorSelectedIcon = UIUtil.readImage("/edit_s.png");
+		conditionEditorIcon = UIUtil.readImage("/edit.png");
 	}
 }

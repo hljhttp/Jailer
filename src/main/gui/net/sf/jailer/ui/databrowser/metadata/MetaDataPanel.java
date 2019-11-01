@@ -51,6 +51,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
@@ -191,7 +192,7 @@ public abstract class MetaDataPanel extends javax.swing.JPanel {
 		            if (schema != null) {
 		            	schema = Quoting.staticUnquote(schema);
 		            }
-		            ResultSet rs = cStmt.executeQuery(String.format(session.dbms.getPackageNamesQuery(), schema));
+		            ResultSet rs = cStmt.executeQuery(String.format(Locale.ENGLISH, session.dbms.getPackageNamesQuery(), schema));
 		            MemorizedResultSet result = new MemorizedResultSet(rs, null, session, schema);
 		            result.close();
 		            rs.close();
@@ -778,7 +779,7 @@ public abstract class MetaDataPanel extends javax.swing.JPanel {
 					                    			script.append(separator + UIUtil.LINE_SEPARATOR);
 					                    		}
 					                    		if ("DDL".equals(template)) {
-						                    		String ddl = mdTable.getDDL().trim();
+						                    		String ddl = mdTable.getDDL().trim().replaceAll("\\nON ", " ON ");
 													script.append(ddl);
 													if (!ddl.endsWith(";")) {
 														script.append(";");
@@ -797,7 +798,7 @@ public abstract class MetaDataPanel extends javax.swing.JPanel {
 						                    		} else {
 						                    			tableName = mdTable.getSchema() + "." + mdTable.getName();
 						                    		}
-						                    		script.append(String.format(template, tableName, tableType));
+						                    		script.append(String.format(Locale.ENGLISH, template, tableName, tableType));
 					                    		}
 					                    	}
 					            			script.append("\n");
@@ -1086,9 +1087,13 @@ public abstract class MetaDataPanel extends javax.swing.JPanel {
     
     private void updateTablesCombobox(Set<MDSchema> selectedSchemas) {
         Set<String> tableSet = new HashSet<String>();
+        Set<MDSchema> toLoad = new HashSet<MDSchema>();
         
         for (Table table: dataModel.getTables()) {
-            if (metaDataSource.toMDTable(table) == null) {
+        	MDSchema mdSchema = metaDataSource.getSchemaOfTable(table);
+        	if (mdSchema != null && !mdSchema.isLoaded()) {
+        		toLoad.add(mdSchema);
+        	} else if (metaDataSource.toMDTable(table) == null) {
                 String schemaName = table.getSchema("");
                 MDSchema schema;
                 if (schemaName.isEmpty()) {
@@ -1103,7 +1108,9 @@ public abstract class MetaDataPanel extends javax.swing.JPanel {
             }
         }
         for (MDSchema schema: selectedSchemas) {
-            if (schema.isLoaded()) {
+            if (!schema.isLoaded()) {
+            	toLoad.add(schema);
+            } else {
                 for (MDTable table: schema.getTables()) {
                     if (!ModelBuilder.isJailerTable(table.getName())) {
                         String name;
@@ -1127,6 +1134,10 @@ public abstract class MetaDataPanel extends javax.swing.JPanel {
         });
         ComboBoxModel model = new DefaultComboBoxModel(new Vector(tables));
         tablesComboBox.setModel(model);
+        
+        for (MDSchema schema: toLoad) {
+        	schema.loadTables(true, null, null);
+        }
     }
 
     protected void openTable(MDTable mdTable) {
@@ -1885,7 +1896,7 @@ public abstract class MetaDataPanel extends javax.swing.JPanel {
                 	s *= 0.8;
                 }
                 try {
-                    return new ImageIcon(scaledIcon.getImage().getScaledInstance((int)(scaledIcon.getIconWidth() * s), (int)(scaledIcon.getIconHeight() * s), Image.SCALE_SMOOTH));
+                    return UIUtil.scaleIcon(scaledIcon, s);
                 } catch (Exception e) {
                 	logger.info("error", e);
                     return null;
@@ -1895,23 +1906,16 @@ public abstract class MetaDataPanel extends javax.swing.JPanel {
         return null;
     }
     static {
-        String dir = "/net/sf/jailer/ui/resource";
-        
         // load images
-        try {
-            warnIcon = new ImageIcon(MetaDataPanel.class.getResource(dir + "/wanr.png"));
-            viewIcon = new ImageIcon(MetaDataPanel.class.getResource(dir + "/view.png"));
-            synonymIcon = new ImageIcon(MetaDataPanel.class.getResource(dir + "/synonym.png"));
-            synonymsIcon = new ImageIcon(MetaDataPanel.class.getResource(dir + "/synonyms.png"));
-            viewsIcon = new ImageIcon(MetaDataPanel.class.getResource(dir + "/views.png"));
-            tablesIcon = new ImageIcon(MetaDataPanel.class.getResource(dir + "/tables.png"));
-            tableIcon = new ImageIcon(MetaDataPanel.class.getResource(dir + "/table.png"));
-            databaseIcon = new ImageIcon(MetaDataPanel.class.getResource(dir + "/database.png"));
-            schemaIcon = new ImageIcon(MetaDataPanel.class.getResource(dir + "/schema.png"));
-        } catch (Exception e) {
-        	logger.info("error", e);
-            e.printStackTrace();
-        }
+        warnIcon = UIUtil.readImage("/wanr.png");
+        viewIcon = UIUtil.readImage("/view.png");
+        synonymIcon = UIUtil.readImage("/synonym.png");
+        synonymsIcon = UIUtil.readImage("/synonyms.png");
+        viewsIcon = UIUtil.readImage("/views.png");
+        tablesIcon = UIUtil.readImage("/tables.png");
+        tableIcon = UIUtil.readImage("/table.png");
+        databaseIcon = UIUtil.readImage("/database.png");
+        schemaIcon = UIUtil.readImage("/schema.png");
     }
 
 }

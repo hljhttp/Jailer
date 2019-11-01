@@ -19,7 +19,6 @@ import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.GridBagConstraints;
-import java.awt.Image;
 import java.awt.Insets;
 import java.awt.event.ComponentEvent;
 import java.awt.event.ComponentListener;
@@ -31,6 +30,7 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import javax.swing.BorderFactory;
@@ -551,7 +551,7 @@ public class QueryBuilderDialog extends javax.swing.JDialog {
 			gridBagConstraints.anchor = java.awt.GridBagConstraints.WEST;
 			if (y == 0) {
 				label = new javax.swing.JLabel();
-				label.setText(y == 0 ? " From  " : " Join  ");
+				label.setText(" From  ");
 				label.setFont(nonBoldFont);
 
 				relationshipsPanel.add(label, gridBagConstraints);
@@ -927,8 +927,8 @@ public class QueryBuilderDialog extends javax.swing.JDialog {
 								if (!unquote(tableC.getUnqualifiedName())
 										.equalsIgnoreCase(aName)) {
 									if (unquote(tableC.getUnqualifiedName())
-											.toLowerCase().startsWith(
-													as.toLowerCase())) {
+											.toLowerCase(Locale.ENGLISH).startsWith(
+													as.toLowerCase(Locale.ENGLISH))) {
 										unique = false;
 										break;
 									}
@@ -1002,7 +1002,7 @@ public class QueryBuilderDialog extends javax.swing.JDialog {
 		StringBuffer sql = new StringBuffer("Select "
 				+ (selectDistinct ? "distinct " : ""));
 		String lf = System.getProperty("line.separator", "\n");
-		String tab = "       ";
+		String tab = "     ";
 
 		List<Relationship> relationships = rootRelationship.flatten(0, null,
 				false);
@@ -1132,6 +1132,31 @@ public class QueryBuilderDialog extends javax.swing.JDialog {
 			}
 		}
 
+		int numConds = 0;
+		
+		for (int i = 0; i < relationships.size(); ++i) {
+			Relationship r = relationships.get(i);
+			boolean appendAnd = true;
+			if (r.anchorWhereClause != null && r.anchor != null) {
+				boolean anchorExists = false;
+				for (Relationship c : r.children) {
+					if (c.association == r.anchor) {
+						anchorExists = true;
+						break;
+					}
+				}
+				if (!anchorExists) {
+					appendAnd = false;
+					++numConds;
+				}
+			}
+			if (appendAnd
+					&& r.whereClause != null
+					&& (r.joinOperator == JoinOperator.Join || r.originalParent != null)) {
+				++numConds;
+			}
+		}
+
 		for (int i = 0; i < relationships.size(); ++i) {
 			Relationship r = relationships.get(i);
 			String lastAlias = "";
@@ -1165,9 +1190,13 @@ public class QueryBuilderDialog extends javax.swing.JDialog {
 						sql.append(singleLine ? " " : (lf + tab));
 						sql.append("and ");
 					}
-					sql.append("("
-							+ SqlUtil.replaceAliases(r.anchorWhereClause,
-									r.alias, lastAlias) + ")");
+					if (!f || numConds != 1) {
+						sql.append("(");
+					}
+					sql.append(SqlUtil.replaceAliases(r.anchorWhereClause, r.alias, lastAlias));
+					if (!f || numConds != 1) {
+						sql.append(")");
+					}
 					f = false;
 				}
 			}
@@ -1182,9 +1211,13 @@ public class QueryBuilderDialog extends javax.swing.JDialog {
 					sql.append(singleLine ? " " : (lf + tab));
 					sql.append("and ");
 				}
-				sql.append("("
-						+ SqlUtil.replaceAliases(r.whereClause, r.alias,
-								lastAlias) + ")");
+				if (!f || numConds != 1) {
+					sql.append("(");
+				}
+				sql.append(SqlUtil.replaceAliases(r.whereClause, r.alias, lastAlias));
+				if (!f || numConds != 1) {
+					sql.append(")");
+				}
 				f = false;
 			}
 		}
@@ -1432,23 +1465,9 @@ public class QueryBuilderDialog extends javax.swing.JDialog {
 	private ImageIcon joinImage = null;
 	private ImageIcon minusImage = null;
 	{
-		String dir = "/net/sf/jailer/ui/resource";
-
 		// load image
-		try {
-			joinImage = new ImageIcon(new ImageIcon(getClass().getResource(
-					dir + "/collapsed.png")).getImage().getScaledInstance(22,
-					18, Image.SCALE_SMOOTH));
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-		try {
-			minusImage = new ImageIcon(new ImageIcon(getClass().getResource(
-					dir + "/minus.png")).getImage().getScaledInstance(22, 18,
-					Image.SCALE_SMOOTH));
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
+		joinImage = UIUtil.scaleIcon(UIUtil.readImage("/collapsed.png"), 22, 18);
+		minusImage = UIUtil.scaleIcon(UIUtil.readImage("/minus.png"), 22, 18);
 	}
 
 	private static final long serialVersionUID = -2801831496446636545L;

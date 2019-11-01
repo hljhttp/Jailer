@@ -21,6 +21,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 import javax.xml.parsers.DocumentBuilder;
@@ -30,6 +31,7 @@ import javax.xml.parsers.ParserConfigurationException;
 import org.w3c.dom.Comment;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
+import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 import org.xml.sax.SAXException;
 
@@ -352,7 +354,7 @@ public class Table extends ModelElement implements Comparable<Table> {
 			template = XmlUtil.parse(xmlTemplate);
 		}
 
-		removeNonAggregatedAssociationElements((Element) template.getChildNodes().item(0));
+		removeNonAggregatedAssociationElements(template.getChildNodes().item(0));
 		
 		// find associations:
 		final Set<String> mappedAssociations = new HashSet<String>();
@@ -391,12 +393,12 @@ public class Table extends ModelElement implements Comparable<Table> {
 		return template;
 	}
 
-	private void removeNonAggregatedAssociationElements(Element element) {
-		NodeList children = element.getChildNodes();
+	private void removeNonAggregatedAssociationElements(Node node) {
+		NodeList children = node.getChildNodes();
 		int i = 0;
 		while (i < children.getLength()) {
 			if (children.item(i) instanceof Element) {
-				Element e = (Element) children.item(i);
+				Node e = children.item(i);
 				if (XmlUtil.NS_URI.equals(e.getNamespaceURI()) && XmlUtil.ASSOCIATION_TAG.equals(e.getLocalName())) {
 					boolean f = false;
 					for (Association a: associations) {
@@ -410,7 +412,7 @@ public class Table extends ModelElement implements Comparable<Table> {
 					if (f) {
 						++i;
 					} else {
-						element.removeChild(e);
+						node.removeChild(e);
 					}
 				} else {
 					removeNonAggregatedAssociationElements(e);
@@ -431,7 +433,7 @@ public class Table extends ModelElement implements Comparable<Table> {
 		DocumentBuilder builder = factory.newDocumentBuilder();
 		Document template = builder.newDocument();
 		
-		Element root = template.createElement(XmlUtil.asElementName(getUnqualifiedName().toLowerCase()));
+		Element root = template.createElement(XmlUtil.asElementName(getUnqualifiedName().toLowerCase(Locale.ENGLISH)));
 		root.setAttributeNS("http://www.w3.org/2000/xmlns/",
 				"xmlns:" + XmlUtil.NS_PREFIX,
 				XmlUtil.NS_URI);
@@ -450,7 +452,7 @@ public class Table extends ModelElement implements Comparable<Table> {
 					break;
 				}
 			}
-			Element columnElement = template.createElement(XmlUtil.asElementName(column.name.toLowerCase()));
+			Element columnElement = template.createElement(XmlUtil.asElementName(column.name.toLowerCase(Locale.ENGLISH)));
 			String quotedName = quoting != null? quoting.requote(column.name) : column.name;
 			if (!isPK) {
 				columnElement.setAttribute(XmlUtil.NS_PREFIX + ":if-not-null", XmlUtil.SQL_PREFIX + "T." + quotedName);

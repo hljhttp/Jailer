@@ -21,9 +21,10 @@ import java.io.FileOutputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
+import java.util.Date;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
@@ -31,6 +32,9 @@ import net.sf.jailer.configuration.Configuration;
 import net.sf.jailer.datamodel.DataModel;
 import net.sf.jailer.datamodel.Table;
 import net.sf.jailer.ui.Environment;
+import net.sf.jailer.ui.databrowser.BookmarksPanel;
+import net.sf.jailer.ui.databrowser.BookmarksPanel.BookmarkId;
+import net.sf.jailer.util.Pair;
 
 /**
  * Persists UI settings.
@@ -48,6 +52,26 @@ public class UISettings  {
 	 * Name of property holding the "recent files".
 	 */
 	public static final String RECENT_FILES = "RECENT_FILES";
+
+	/**
+	 * Name of property holding the "recent connection aliases".
+	 */
+	public static final String RECENT_ALIASES = "RECENT_ALIASES";
+
+	/**
+	 * Name of property holding the "recent bookmarks".
+	 */
+	public static final String RECENT_BOOKMARKS = "RECENT_BOOKMARKS";
+	
+	/**
+	 * Name of property holding the last session.
+	 */
+	public static final String LAST_SESSION = "LAST_SESSION";
+
+	/**
+	 * Maximum size of any "recent" list.
+	 */
+	private final static int MAX_RECENT_LIST_SIZE = 12;
 
 	/**
 	 * Persistent properties.
@@ -70,7 +94,7 @@ public class UISettings  {
 					properties = (Map<String, Object>) in.readObject();
 					in.close();
 				} catch (Exception e) {
-					e.printStackTrace();
+					// ignore
 				}
 			}
 		}
@@ -169,14 +193,25 @@ public class UISettings  {
 		}
 	}
 
-	@SuppressWarnings("unchecked")
-	public static List<File> loadRecentFiles() {
+	@SuppressWarnings({ "unchecked", "rawtypes" })
+	public static List<Pair<File, Date>> loadRecentFiles() {
 		Object files = restore(RECENT_FILES);
-		List<File> result = new ArrayList<File>();
-		if (files instanceof Collection) {
-			for (File file: (List<File>) files) {
-				if (!isSbeModel(file) && !Configuration.getInstance().isTempFile(file)) {
-					result.add(file);
+		List<Pair<File, Date>> result = new ArrayList<Pair<File,Date>>();
+		if (files instanceof List) {
+			for (Object file: (List) files) {
+				Pair<File, Date> p;
+				if (file instanceof Pair) {
+					p = (Pair) file;
+					if (!(p.a instanceof File && p.b instanceof Date)) {
+						continue;
+					}
+				} else if (file instanceof File) {
+					p = new Pair<File, Date>((File) file, null);
+				} else {
+					continue;
+				}
+				if (!isSbeModel(p.a) && !Configuration.getInstance().isTempFile(p.a)) {
+					result.add(p);
 				}
 			}
 		}
@@ -185,14 +220,91 @@ public class UISettings  {
 
 	public static void addRecentFile(File file) {
 		if (!isSbeModel(file) && !Configuration.getInstance().isTempFile(file)) {
-			final int MAX_FILES = 100;
-			List<File> files = loadRecentFiles();
-			files.remove(file);
-			files.add(0, file);
-			if (MAX_FILES < files.size()) {
+			List<Pair<File, Date>> files = loadRecentFiles();
+			for (Iterator<Pair<File, Date>> i = files.iterator(); i.hasNext(); ) {
+				if (i.next().a.equals(file)) {
+					i.remove();
+				}
+			}
+			files.add(0, new Pair<File, Date>(file, new Date()));
+			if (MAX_RECENT_LIST_SIZE < files.size()) {
 				files.remove(files.size() - 1);
 			}
 			store(RECENT_FILES, files);
 		}
 	}
+
+	@SuppressWarnings({ "rawtypes", "unchecked" })
+	public static List<Pair<String, Date>> loadRecentConnectionAliases() {
+		Object aliases = restore(RECENT_ALIASES);
+		List<Pair<String, Date>> result = new ArrayList<Pair<String,Date>>();
+		if (aliases instanceof List) {
+			for (Object alias: (List) aliases) {
+				if (alias instanceof String) {
+					result.add(new Pair<String, Date>((String) alias, null));
+				} else if (alias instanceof Pair) {
+					Pair p = (Pair) alias;
+					if (p.a instanceof String && p.b instanceof Date) {
+						result.add(p);
+					}
+				}
+			}
+		}
+		return result;
+	}
+	
+	public static void addRecentConnectionAliases(String alias) {
+		List<Pair<String, Date>> aliases = loadRecentConnectionAliases();
+		for (Iterator<Pair<String, Date>> i = aliases.iterator(); i.hasNext(); ) {
+			Pair<String, Date> next = i.next();
+			if (next.a.equals(alias)) {
+				i.remove();
+			}
+		}
+		aliases.add(0, new Pair<String, Date>(alias, new Date()));
+		if (MAX_RECENT_LIST_SIZE < aliases.size()) {
+			aliases.remove(aliases.size() - 1);
+		}
+		store(RECENT_ALIASES, aliases);
+	}
+
+	@SuppressWarnings({ "rawtypes" })
+	public static List<BookmarkId> loadRecentBookmarks() {
+		Object bookmarks = restore(RECENT_BOOKMARKS);
+		List<BookmarkId> result = new ArrayList<BookmarkId>();
+		if (bookmarks instanceof List) {
+			for (Object bm: (List) bookmarks) {
+				if (bm instanceof BookmarkId) {
+					result.add((BookmarkId) bm);
+				}
+			}
+		}
+		return result;
+	}
+	
+	public static void addRecentBookmarks(BookmarksPanel.BookmarkId bookmark) {
+		if (bookmark.connectionAlias != null && bookmark.datamodelFolder != null) {
+			List<BookmarkId> bookmarks = loadRecentBookmarks();
+			bookmarks.remove(bookmark);
+			bookmarks.add(0, bookmark);
+			if (MAX_RECENT_LIST_SIZE < bookmarks.size()) {
+				bookmarks.remove(bookmarks.size() - 1);
+			}
+			store(RECENT_BOOKMARKS, bookmarks);
+		}
+	}
+
+	public static void storeLastSession(BookmarkId bookmark, String module) {
+		store(LAST_SESSION + module, bookmark);
+	}
+
+	public static BookmarkId restoreLastSession(String module) {
+		Object lastSession = restore(LAST_SESSION + module);
+		if (lastSession instanceof BookmarkId) {
+			return (BookmarkId) lastSession;
+		} else {
+			return null;
+		}
+	}
+
 }

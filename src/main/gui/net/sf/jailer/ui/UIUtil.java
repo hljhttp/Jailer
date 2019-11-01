@@ -52,13 +52,16 @@ import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.io.UnsupportedEncodingException;
+import java.lang.reflect.Constructor;
 import java.net.URL;
 import java.net.URLEncoder;
+import java.text.DateFormat;
 import java.text.NumberFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
@@ -66,6 +69,7 @@ import java.util.concurrent.Callable;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import javax.imageio.ImageIO;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
 import javax.swing.JCheckBoxMenuItem;
@@ -183,7 +187,7 @@ public class UIUtil {
         if (selectedFile != null) {
             fileChooser.setFile(selectedFile.getName());
         } else if (extension != null && extension.length() > 0) {
-            if (System.getProperty("os.name", "").toLowerCase().startsWith("windows")) {
+            if (System.getProperty("os.name", "").toLowerCase(Locale.ENGLISH).startsWith("windows")) {
                 // workaround: http://bugs.java.com/view_bug.do?bug_id=8021943
                 boolean set = true;
                 Matcher m = Pattern.compile("1.7.0_(\\d+).*").matcher(System.getProperty("java.version", ""));
@@ -202,9 +206,9 @@ public class UIUtil {
         FilenameFilter filter = new FilenameFilter() {
             @Override
             public boolean accept(File dir, String name) {
-                return name.toLowerCase().endsWith(extension)
-                        || allowZip && name.toLowerCase().endsWith(extension + ".gz")
-                        || allowZip && name.toLowerCase().endsWith(extension + ".zip");
+                return name.toLowerCase(Locale.ENGLISH).endsWith(extension)
+                        || allowZip && name.toLowerCase(Locale.ENGLISH).endsWith(extension + ".gz")
+                        || allowZip && name.toLowerCase(Locale.ENGLISH).endsWith(extension + ".zip");
             }
         };
         fileChooser.setFilenameFilter(filter);
@@ -229,6 +233,10 @@ public class UIUtil {
                 if (addExtension && !(fn.endsWith(extension)
                         || (allowZip && (fn.endsWith(extension + ".zip") || fn.endsWith(extension + ".gz"))))) {
                     fn += extension;
+                } else {
+                	if (forLoad && !fn.endsWith(extension) && !new File(fn).exists()) {
+                        fn += extension;
+                	}
                 }
                 try {
                     storeCurrentDir(extension, selFile.getParent());
@@ -621,38 +629,39 @@ public class UIUtil {
     public static StringBuffer createCLIArgumentString(String user, String password, List<String> args, ExecutionContext executionContext) {
         args.add("-datamodel");
         args.add(executionContext.getQualifiedDatamodelFolder());
-        return createPlainCLIArguments(user, password, args);
+        return createPlainCLIArguments(user, password, args, true);
     }
 
-    public static StringBuffer createPlainCLIArguments(String user, String password, List<String> args) {
+    public static StringBuffer createPlainCLIArguments(String user, String password, List<String> args, boolean escMinus) {
         final StringBuffer arglist = new StringBuffer();
         int pwi = -1;
         for (int i = args.size() - 1; i >= 0; --i) {
-            if (args.get(i) != null && args.get(i).equals(password) && password.length() > 0) {
+            if (args.get(i) != null && password != null && args.get(i).equals(password) && password.length() > 0) {
                 pwi = i;
                 break;
             }
         }
+        char q =  System.getProperty("os.name", "").toLowerCase(Locale.ENGLISH).startsWith("windows") ? '"' : '\'';
         for (int i = 0; i < args.size(); ++i) {
             String arg = args.get(i);
             if (i == pwi) {
-                arglist.append(" - \"<password>\"");
+                arglist.append((escMinus? " -" : "") + " " + q + "<password>" + q);
             } else {
-                if (arg.startsWith("-") && arg.equals(user)) {
+                if (escMinus && arg.startsWith("-") && user != null && arg.equals(user)) {
                 	arglist.append(" -");
                 }
                 if ("".equals(arg) || arg.contains(" ") || arg.contains("<") || arg.contains(">") || arg.contains("*")
                         || arg.contains("?") || arg.contains("|") || arg.contains("$") || arg.contains("\"")
                         || arg.contains("'") || arg.contains("\\") || arg.contains(";") || arg.contains("&")) {
-                    arglist.append(" \"");
+                    arglist.append(" " + q);
                     for (int j = 0; j < arg.length(); ++j) {
                         char c = arg.charAt(j);
-                        if (c == '\"' || c == '$') {
+                        if (c == '\"' || c == '\'' || c == '$') {
                             arglist.append("\\");
                         }
                         arglist.append(c);
                     }
-                    arglist.append("\"");
+                    arglist.append(q);
                 } else {
                     arglist.append(" " + arg);
                 }
@@ -662,6 +671,7 @@ public class UIUtil {
     }
 
     public static Object EXCEPTION_CONTEXT_USER_ERROR = new Object();
+    public static Object EXCEPTION_CONTEXT_MB_USER_ERROR = new Object();
     public static Object EXCEPTION_CONTEXT_USER_WARNING = new Object();
     
     /**
@@ -707,7 +717,9 @@ public class UIUtil {
      *            the exception
      */
     public static void showException(Component parent, String title, Throwable t, Object context, JComponent additionalControl) {
-        if (context == EXCEPTION_CONTEXT_USER_ERROR) {
+    	Throwable original = t;
+    	
+    	if (context == EXCEPTION_CONTEXT_USER_ERROR || context == EXCEPTION_CONTEXT_MB_USER_ERROR) {
         	if (t instanceof IndexOutOfBoundsException
         			|| t instanceof NullPointerException
         			|| t instanceof ClassCastException
@@ -746,10 +758,27 @@ public class UIUtil {
         if (t instanceof CancellationException) {
         	return;
         }
-        String message = t.getMessage();
-        if (message == null || "".equals(message.trim())) {
-            message = t.getClass().getName();
+        String message;
+        if (context == EXCEPTION_CONTEXT_USER_ERROR || context == EXCEPTION_CONTEXT_MB_USER_ERROR) {
+        	message = original.getClass().getSimpleName();
+	        if (original.getMessage() != null && !"".equals(original.getMessage().trim())) {
+	            message += ": " + original.getMessage();
+	        }
+	        Throwable cause = original.getCause();
+	        while (cause != null && cause != cause.getCause()) {
+	        	if (cause.getMessage() != null && !"".equals(cause.getMessage().trim())) {
+			        message += "\n \nCaused by: " + cause.getClass().getSimpleName();
+		            message += ": " + cause.getMessage();
+		        }
+	        	cause = cause.getCause();
+            }
+        } else {
+	        message = t.getMessage();
+	        if (message == null || "".equals(message.trim())) {
+	            message = t.getClass().getName();
+	        }
         }
+
         StringBuilder msg = lineWrap(message, 80);
 
         String contextDesc = "";
@@ -757,7 +786,7 @@ public class UIUtil {
             if (context instanceof Session) {
                 Session session = (Session) context;
                 contextDesc = session.dbUrl + " (" + session.dbms + ")";
-            } else if (context != EXCEPTION_CONTEXT_USER_ERROR) {
+            } else if (context != EXCEPTION_CONTEXT_USER_ERROR && context != EXCEPTION_CONTEXT_MB_USER_ERROR) {
                 contextDesc = lineWrap(context.toString(), 80).toString();
             }
         }
@@ -765,25 +794,35 @@ public class UIUtil {
         PrintWriter pw = new PrintWriter(sw);
         t.printStackTrace(pw);
         if (context != EXCEPTION_CONTEXT_USER_ERROR) {
-            contextDesc += "\nHelp Desk: https://sourceforge.net/p/jailer/discussion/";
-            contextDesc += "\nMail: rwisser@users.sourceforge.net\n";
-            contextDesc += "\n" + JailerVersion.APPLICATION_NAME + " " + JailerVersion.VERSION + "\n\n" + sw.toString();
-            
-            String iMsg = msg.toString() + "\n" + JailerVersion.APPLICATION_NAME + " " + JailerVersion.VERSION + "\n\n" + sw.toString();
+        	if (context != EXCEPTION_CONTEXT_MB_USER_ERROR) {
+        		contextDesc += "\nHelp Desk: https://sourceforge.net/p/jailer/discussion/";
+        		contextDesc += "\nMail: rwisser@users.sourceforge.net\n";
+        		contextDesc += "\n" + JailerVersion.APPLICATION_NAME + " " + JailerVersion.VERSION + "\n\n" + sw.toString();
+        	}
+
+            String iMsg = (context != null && "AWT".equals(context)? context : "") +
+            		msg.toString() + "\n" + JailerVersion.APPLICATION_NAME + " " + JailerVersion.VERSION + "\n\n" + sw.toString();
+
+            boolean silent = "AWT".equals(context);
+
             iMsg = iMsg
             		.replaceAll("\\bat [^\\n]*/", "at ")
             		.replaceAll("\\bat java.", "atj..")
 					.replaceAll("\\bat javax.swing.", "atjs..")
 					.replaceAll("\\bat net.sf.jailer.", "atn..")
 					.replaceAll("\\s*(\\n)\\s*", "$1");
-            sendIssue("internal", iMsg);
+            sendIssue("internal", (silent? "S" : "") + iMsg);
+
+            if (silent) {
+            	return;
+            }
         }
 
         new SqlErrorDialog(parent == null ? null : parent instanceof Window? (Window) parent : SwingUtilities.getWindowAncestor(parent), msg.toString(),
-                contextDesc, false, false, context == EXCEPTION_CONTEXT_USER_ERROR || context == EXCEPTION_CONTEXT_USER_WARNING? title : null, context == EXCEPTION_CONTEXT_USER_WARNING, additionalControl);
+                contextDesc, false, false, context == EXCEPTION_CONTEXT_USER_ERROR || context == EXCEPTION_CONTEXT_MB_USER_ERROR || context == EXCEPTION_CONTEXT_USER_WARNING? title : null, context == EXCEPTION_CONTEXT_USER_WARNING, additionalControl);
     }
 
-    private static StringBuilder lineWrap(String message, int maxwidth) {
+    public static StringBuilder lineWrap(String message, int maxwidth) {
         StringBuilder msg = new StringBuilder();
         Pattern wrapRE = Pattern.compile("(\\S\\S{" + maxwidth + ",}|.{1," + maxwidth + "})(\\s+|$)");
         Matcher m = wrapRE.matcher(message == null ? "" : message);
@@ -990,14 +1029,48 @@ public class UIUtil {
         if (icon != null) {
         	int heigth = component.getFontMetrics(new JLabel("M").getFont()).getHeight();
         	double s = heigth * scaleFactor / (double) icon.getIconHeight();
-        	try {
-        		return new ImageIcon(icon.getImage().getScaledInstance((int)(icon.getIconWidth() * s), (int)(icon.getIconHeight() * s), Image.SCALE_SMOOTH));
-        	} catch (Exception e) {
-        		return null;
-        	}
+        	return scaleIcon(icon, s);
         }
     	return null;
     }
+
+	public static ImageIcon scaleIcon(ImageIcon icon, double factor) {
+		if (icon != null) {
+	        return scaleIcon(icon, (int)(icon.getIconWidth() * factor), (int)(icon.getIconHeight() * factor));
+		}
+		return null;
+	}
+
+	public static synchronized ImageIcon scaleIcon(ImageIcon icon, int w, int h) {
+		if (icon != null) {
+			try {
+				Image scaled = icon.getImage().getScaledInstance(w, h, Image.SCALE_SMOOTH);
+				if (!baseMultiResolutionImageClassExists || (icon.getIconWidth() <= w && icon.getIconHeight() <= h)) {
+					return new ImageIcon(scaled);
+				}
+				Image[] imageList = new Image[] { 
+						scaled, 
+						icon.getImage()
+						};
+				try {
+					if (baseMultiResolutionImageClassConstructor == null) {
+						baseMultiResolutionImageClassConstructor = Class.forName("java.awt.image.BaseMultiResolutionImage").getConstructor(imageList.getClass());
+					}
+					Object baseMultiResolutionImage = baseMultiResolutionImageClassConstructor.newInstance((Object) imageList);
+					return new ImageIcon((Image) baseMultiResolutionImage);
+				} catch (Throwable t) {
+					baseMultiResolutionImageClassExists = false;
+					return new ImageIcon(scaled);
+				}
+			} catch (Exception e) {
+				return null;
+			}
+		}
+		return null;
+	}
+
+	private static Constructor<?> baseMultiResolutionImageClassConstructor = null;
+	private static boolean baseMultiResolutionImageClassExists = true;
 
     /**
      * Represents "null"-value in rows tables.
@@ -1113,8 +1186,10 @@ public class UIUtil {
     	UIUtil.invokeLater(new Runnable() {
 			@Override
 			public void run() {
-				setPopupActive(true);
-				popup.show(invoker, x, y);
+				if (invoker.isShowing()) {
+					setPopupActive(true);
+					popup.show(invoker, x, y);
+				}
 			}
 		});
 	}
@@ -1179,9 +1254,12 @@ public class UIUtil {
 	 */
 	@SuppressWarnings("serial")
 	public static void validatePrimaryKeys(final Window windowAncestor, final BasicDataSource basicDataSource, final Set<Table> tables) {
+		final Object cancellationContext = new Object();
+		
+		final String infoPrefix = "<html>"
+		+ "Checking the primary key definitions in the data model <br>for uniqueness...<br><br><br>".replace(" ", "&nbsp;");
 		final ConcurrentTaskControl concurrentTaskControl = new ConcurrentTaskControl(null, 
-				"<html>"
-				+ "Checking the primary key definitions in the data model <br>for uniqueness...</html>".replace(" ", "&nbsp;")) {
+				infoPrefix + "<br><br><br>") {
 				@Override
 				protected void onError(Throwable error) {
 					UIUtil.showException(windowAncestor, "Error", error);
@@ -1189,8 +1267,9 @@ public class UIUtil {
 				}
 				@Override
 				protected void onCancellation() {
-					closeWindow();
-					CancellationHandler.cancel(null);
+					master.cancelButton.setText("Stopping...");
+					master.cancelButton.setEnabled(false);
+					CancellationHandler.cancel(cancellationContext);
 				}
 			};
 		ConcurrentTaskControl.openInModalDialog(windowAncestor, concurrentTaskControl, 
@@ -1200,7 +1279,43 @@ public class UIUtil {
 					Session session = new Session(basicDataSource, basicDataSource.dbms, null);
 					JobManager jobManager = new JobManager(tables.size() > 1? 4 : 1);
 					try {
-						new PrimaryKeyValidator().validatePrimaryKey(session, tables, false, jobManager);
+						new PrimaryKeyValidator(cancellationContext) {
+							boolean initialized = false;
+							@Override
+							protected void updateProgressBar() {
+								invokeLater(new Runnable() {
+									@Override
+									public void run() {
+										String info;
+										int total = numTotal.get();
+										if (total == 0) {
+											total = 1;
+										}
+										info = (numDone.get() * 100 / total) + "%";
+										int errors = numErrors.get();
+										if (errors > 0) {
+											info += "&nbsp;<font color=\"#ff2222\">" + errors + "&nbsp;Error" + (errors == 1? "" : "s") + "</font>";
+										}
+										if (!initialized) {
+											concurrentTaskControl.master.cancelButton.setText("Stop");
+											initialized = true;
+										}
+										concurrentTaskControl.master.infoLabel.setText(infoPrefix + "<font size=\"+1\">" + info + "</font></html>");
+									}
+								});
+							}
+						}.validatePrimaryKey(session, tables, jobManager);
+					} catch (final Throwable t) {
+						invokeLater(new Runnable() {
+							@Override
+							public void run() {
+								if (concurrentTaskControl.master.isShowing()) {
+									UIUtil.showException(windowAncestor, "Error", t);
+									concurrentTaskControl.master.closeWindow();
+								}
+							}
+						});
+						return;
 					} finally {
 						session.shutDown();
 						jobManager.shutdown();
@@ -1208,8 +1323,10 @@ public class UIUtil {
 					invokeLater(new Runnable() {
 						@Override
 						public void run() {
-							JOptionPane.showMessageDialog(windowAncestor, tables.size() == 1? "The primary key definition is valid." : "All primary key definitions are valid.");
-							concurrentTaskControl.closeWindow();
+							if (concurrentTaskControl.master.isShowing()) {
+								JOptionPane.showMessageDialog(windowAncestor, tables.size() == 1? "The primary key definition is valid." : "All primary key definitions are valid.");
+								concurrentTaskControl.closeWindow();
+							}
 						}
 					});
 				}
@@ -1217,7 +1334,7 @@ public class UIUtil {
 		invokeLater(4, new Runnable() {
 			@Override
 			public void run() {
-				CancellationHandler.reset(null);
+				CancellationHandler.reset(cancellationContext);
 			}
 		});
 	}
@@ -1243,8 +1360,38 @@ public class UIUtil {
 		return NumberFormat.getInstance().format(number);
 	}
 
+	public static String correctFileSeparator(String fileName) {
+		try {
+			if (fileName == null || new File(fileName).exists()) {
+				return fileName;
+			}
+			if (File.separatorChar == '/') {
+				return fileName.replace('\\', File.separatorChar);
+			} else {
+				return fileName;
+			}
+		} catch (Exception e) {
+			return fileName;
+		}
+	}
+
+	public static String toDateAsString(Long time) {
+		if (time == null) {
+			return "";
+		}
+		return DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(new Date(time));
+	}
+
+	public static Object toDateAsString(Date date) {
+		if (date != null) {
+			return toDateAsString(date.getTime());
+		} else {
+			return null;
+		}
+	}
+
 	private static Font defaultFont = null;
-	
+
 	public static Font defaultTitleFont() {
 		if (defaultFont == null) {
 			defaultFont = new JLabel().getFont();
@@ -1282,6 +1429,84 @@ public class UIUtil {
 				return new BasicDataSource(driverClassName, dbUrl, dbUser, dbPassword, maxPoolSize, jdbcDriverURL);
 			}
 		}, "connecting...");
+	}
+
+	public static boolean checkFileExistsAndWarn(String file, Component parent) {
+		if (file != null && !new File(file).exists()) {
+            JOptionPane.showMessageDialog(parent, "File \"" + file + "\" not found.", "File not found",
+                    JOptionPane.WARNING_MESSAGE);
+			return false;
+		}
+		return true;
+	}
+
+	public static String removesuperfluousSpaces(String text) {
+		return text.trim()
+				.replaceAll(" *\\) +or +\\( *", ") or (")
+				.replaceAll("\\( *", "(")
+				.replaceAll(" *\\)", ")")
+				.replaceAll(" *;$", ";");
+	}
+
+	/**
+	 * Removes single line comments.
+	 * 
+	 * @param statement
+	 *            the statement
+	 * 
+	 * @return statement the statement without comments and literals
+	 */
+	private static String removeSingleLineComments(String statement) {
+		Pattern pattern = Pattern.compile("('(?:[^']*'))|(/\\*.*?\\*/)|(\\-\\-.*?(?=\n|$))", Pattern.DOTALL);
+		Matcher matcher = pattern.matcher(statement);
+		boolean result = matcher.find();
+		StringBuffer sb = new StringBuffer();
+		if (result) {
+			do {
+				if (matcher.group(3) == null) {
+					matcher.appendReplacement(sb, "$0");
+					result = matcher.find();
+					continue;
+				}
+				int l = matcher.group(0).length();
+				matcher.appendReplacement(sb, "");
+				if (matcher.group(1) != null) {
+					l -= 2;
+					sb.append("'");
+				}
+				while (l > 0) {
+					--l;
+					sb.append(' ');
+				}
+				if (matcher.group(1) != null) {
+					sb.append("'");
+				}
+				result = matcher.find();
+			} while (result);
+		}
+		matcher.appendTail(sb);
+		return sb.toString();
+	}
+
+	public static String toSingleLineSQL(String text) {
+		return UIUtil.removesuperfluousSpaces(
+				removeSingleLineComments(text).replaceAll("\\s*\\n\\s*", " "));
+	}
+
+	private static Map<String, ImageIcon> images = new HashMap<String, ImageIcon>();
+	
+	public static ImageIcon readImage(String resource) {
+		ImageIcon result = images.get(resource);
+		if (result == null) {
+			try {
+				result = new ImageIcon(ImageIO.read(UIUtil.class.getResource("/net/sf/jailer/ui/resource" + resource)));
+			} catch (Throwable e) {
+				e.printStackTrace();
+				result = null;
+			}
+			images.put(resource, result);
+		}
+		return result;
 	}
 
 }

@@ -84,11 +84,11 @@ public class ExecutionContext {
 		this.scope = other.scope;
 		this.rawparameters = other.rawparameters;
 		this.embedded = other.embedded;
-		this.checkPrimaryKeys = other.checkPrimaryKeys;
 		this.insertIncrementally = other.insertIncrementally;
 		this.abortInCaseOfInconsistency = other.abortInCaseOfInconsistency;
 		this.independentWorkingTables = other.independentWorkingTables;
 		this.upkDomain = other.upkDomain;
+		this.currentConnectionAlias = other.currentConnectionAlias;
 // don't share progressListenerRegistry, was: this.progressListenerRegistry = other.progressListenerRegistry;
 	}
 
@@ -631,17 +631,22 @@ public class ExecutionContext {
 
 	private Map<String, String> schemaMapping;
 
-	public Map<String, String> getSchemaMapping() {
-		if (schemaMapping == null) {
-			schemaMapping = new HashMap<String, String>();
-			if (rawschemamapping != null) {
-				for (String item: rawschemamapping.split(",")) {
-					String[] fromTo = (" " + item + " ").split("=");
-					if (fromTo.length == 2) {
-						schemaMapping.put(fromTo[0].trim(), fromTo[1].trim());
-					}
+	public static Map<String, String> getSchemaMapping(String rawschemamapping) {
+		Map<String, String> mapping = new HashMap<String, String>();
+		if (rawschemamapping != null) {
+			for (String item: rawschemamapping.split(",")) {
+				String[] fromTo = (" " + item + " ").split("=");
+				if (fromTo.length == 2) {
+					mapping.put(fromTo[0].trim(), fromTo[1].trim());
 				}
 			}
+		}
+		return mapping;
+	}
+	
+	public Map<String, String> getSchemaMapping() {
+		if (schemaMapping == null) {
+			schemaMapping = getSchemaMapping(rawschemamapping);
 		}
 		return schemaMapping;
 	}
@@ -649,7 +654,7 @@ public class ExecutionContext {
 	/**
 	 * Sets source schema map
 	 *
-	 * @param rawsourceschemamapping
+	 * @param schemaMapping
 	 *            source schema map
 	 */
 	public void setSchemaMapping(Map<String, String> schemaMapping) {
@@ -828,7 +833,9 @@ public class ExecutionContext {
 	private String workingTableSchema = null;
 
 	// folder holding the data model. Defaults to './datamodel'
-	private String datamodelFolder = "datamodel";
+	private String datamodelFolder = defaultDatamodelFolder;
+
+	public static String defaultDatamodelFolder = "datamodel";
 
 	// the exported rows will not be sorted according to foreign key constraints
 	private boolean noSorting = false;
@@ -845,9 +852,6 @@ public class ExecutionContext {
 	// use primary keys to determine row identity (instead of rowid-column)
 	private boolean noRowid = false;
 
-	// Should the PKs be checked for validity?
-	private boolean checkPrimaryKeys = false;
-	
 	// collects the rows using multiple insert operations with a limited number of rows per operation
 	private boolean insertIncrementally = false;
 
@@ -866,6 +870,8 @@ public class ExecutionContext {
 	
 	private boolean embedded = false;
 	private Set<String> upkDomain;
+
+	private String currentConnectionAlias;
 	
 	private ProgressListenerRegistry progressListenerRegistry = new ProgressListenerRegistry();
 
@@ -889,20 +895,6 @@ public class ExecutionContext {
 	}
 
 	/**
-	 * Should the PKs be checked for validity?
-	 */
-	public boolean getCheckPrimaryKeys() {
-		return checkPrimaryKeys;
-	}
-	
-	/**
-	 * Should the PKs be checked for validity?
-	 */
-	public void setCheckPrimaryKeys(boolean checkPrimaryKeys) {
-		this.checkPrimaryKeys = checkPrimaryKeys;
-	}
-	
-	/**
 	 * Create working tables that are independent of the extraction model. (Potentially less efficient)
 	 */
 	public boolean isIndependentWorkingTables() {
@@ -922,6 +914,14 @@ public class ExecutionContext {
 
 	public void setUpkDomain(Set<String> upkDomain) {
 		this.upkDomain = upkDomain;
+	}
+
+	public String getCurrentConnectionAlias() {
+		return currentConnectionAlias;
+	}
+
+	public void setCurrentConnectionAlias(String currentConnectionAlias) {
+		this.currentConnectionAlias = currentConnectionAlias;
 	}
 
 	private void copyCommandLineFields(CommandLine commandLine) {
@@ -961,7 +961,6 @@ public class ExecutionContext {
 		isolationLevel = commandLine.isolationLevel;
 		noRowid = commandLine.noRowid;
 		importFilterMappingTableSchema = commandLine.importFilterMappingTableSchema;
-		checkPrimaryKeys = commandLine.checkPrimaryKeys;
 		insertIncrementally = commandLine.insertIncrementally;
 		abortInCaseOfInconsistency = commandLine.abortInCaseOfInconsistency;
 	}

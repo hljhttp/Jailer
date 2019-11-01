@@ -22,7 +22,6 @@ import java.io.File;
 import java.net.URI;
 
 import javax.swing.Icon;
-import javax.swing.ImageIcon;
 import javax.swing.JOptionPane;
 
 import net.sf.jailer.ui.DbConnectionDialog.ConnectionInfo;
@@ -162,7 +161,7 @@ public class DbConnectionDetailsEditor extends javax.swing.JDialog {
 			@Override
 			public void mouseClicked(java.awt.event.MouseEvent evt) {
 				try {
-					BrowserLauncher.openURL(new URI(jdbcHelpURL));
+					BrowserLauncher.openURL(new URI(jdbcHelpURL), DbConnectionDetailsEditor.this);
 				} catch (Exception e) {
 					UIUtil.showException(DbConnectionDetailsEditor.this, "Error", e);
 				}
@@ -619,19 +618,9 @@ public class DbConnectionDetailsEditor extends javax.swing.JDialog {
 	private Icon helpIcon;
 	private Icon loadIcon;
 	{
-		String dir = "/net/sf/jailer/ui/resource";
-		
 		// load images
-		try {
-			helpIcon = new ImageIcon(getClass().getResource(dir + "/help.png"));
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-		try {
-			loadIcon = new ImageIcon(getClass().getResource(dir + "/load.png"));
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
+		helpIcon = UIUtil.readImage("/help.png");
+		loadIcon = UIUtil.readImage("/load.png");
 	}
 	 
 	private static final long serialVersionUID = -492511696901313920L;

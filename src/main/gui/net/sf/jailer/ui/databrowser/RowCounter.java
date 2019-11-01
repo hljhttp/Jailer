@@ -20,6 +20,7 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import net.sf.jailer.database.InlineViewStyle;
@@ -233,7 +234,7 @@ public class RowCounter {
 	 */
 	public long countRows(String andCond, final List<Row> parentRows, final Map<String, List<Row>> rows, Object context, int limit, boolean useOLAPLimitation,
 			String sqlLimitSuffix, boolean selectDistinct, long maxTime, InlineViewStyle inlineViewStyle) throws SQLException {
-		final Quoting quoting = new Quoting(session);
+		final Quoting quoting = Quoting.getQuoting(session);
 		String sql = "Select "; // + (selectDistinct? "distinct " : "");
 		if (association != null) {
 			sql += "distinct ";
@@ -243,7 +244,7 @@ public class RowCounter {
 			String olapPrefix = "Select 1";
 			String olapSuffix = ") S Where S." + ROWNUMBERALIAS + " <= " + limit;
 			boolean limitSuffixInSelectClause = sqlLimitSuffix != null &&
-					(sqlLimitSuffix.toLowerCase().startsWith("top ") || sqlLimitSuffix.toLowerCase().startsWith("first "));
+					(sqlLimitSuffix.toLowerCase(Locale.ENGLISH).startsWith("top ") || sqlLimitSuffix.toLowerCase(Locale.ENGLISH).startsWith("first "));
 			if (sqlLimitSuffix != null && limitSuffixInSelectClause) {
 				sql += (sqlLimitSuffix.replace("%s", Integer.toString(limit))) + " ";
 			}

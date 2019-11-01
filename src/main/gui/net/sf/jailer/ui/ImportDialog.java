@@ -24,6 +24,7 @@ import java.io.File;
 import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
 
@@ -126,11 +127,11 @@ public class ImportDialog extends javax.swing.JDialog {
 		List<String> args = new ArrayList<String>(initialArgs);
 		fillCLIArgs(args);
 		String cmd = "sh jailer.sh";
-		if (System.getProperty("os.name", "").toLowerCase()
+		if (System.getProperty("os.name", "").toLowerCase(Locale.ENGLISH)
 				.startsWith("windows")) {
 			cmd = "jailer.bat";
 		}
-		cliArea.setText(cmd + UIUtil.createPlainCLIArguments(user, password, args));
+		cliArea.setText(cmd + UIUtil.createPlainCLIArguments(user, password, args, true));
 		cliArea.setCaretPosition(0);
 		jScrollPane1.getViewport().setViewPosition(new Point(0, 0));
 	}

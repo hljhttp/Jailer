@@ -26,6 +26,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.sql.DataSource;
 
@@ -40,7 +41,6 @@ import net.sf.jailer.datamodel.DataModel;
 import net.sf.jailer.datamodel.PrimaryKeyFactory;
 import net.sf.jailer.datamodel.Table;
 import net.sf.jailer.ddl.DDLCreator;
-import net.sf.jailer.domainmodel.DomainModel;
 import net.sf.jailer.entitygraph.EntityGraph;
 import net.sf.jailer.modelbuilder.ModelBuilder;
 import net.sf.jailer.progress.ProgressListener;
@@ -87,16 +87,18 @@ public class Jailer {
 	 * @param args arguments
 	 */
 	public static void main(String[] args) {
-		final Thread mainThread = Thread.currentThread();
+		final AtomicBoolean cleanUpFinished = new AtomicBoolean(false);
 		Thread shutdownHook;
 		Runtime.getRuntime().addShutdownHook(shutdownHook = new Thread("shutdown-hook") {
 			@Override
 			public void run() {
 				CancellationHandler.cancel(null);
-				try {
-					mainThread.join();
-				} catch (InterruptedException e) {
-					// ignore
+				while (!cleanUpFinished.get()) {
+					try {
+						Thread.sleep(1000);
+					} catch (InterruptedException e) {
+						e.printStackTrace();
+					}
 				}
 			}
 		});
@@ -126,6 +128,7 @@ public class Jailer {
 				// ignore
 			}
 		}
+		cleanUpFinished.set(true);
 		if (!ok) {
 			System.exit(1);
 		}
@@ -143,6 +146,7 @@ public class Jailer {
 	 */
 	public static boolean jailerMain(String[] args, StringBuffer warnings, ProgressListener progressListener, boolean fromCli) throws Exception {
 		CancellationHandler.reset(null);
+		String pw = null;
 
 		try {
 			CommandLine commandLine = CommandLineParser.parse(args, false);
@@ -164,28 +168,18 @@ public class Jailer {
 			
 			URL[] jdbcJarURLs = ClasspathUtil.toURLArray(commandLine.jdbcjar, commandLine.jdbcjar2, commandLine.jdbcjar3, commandLine.jdbcjar4);
 
-			if ("check-domainmodel".equalsIgnoreCase(command)) {
-				DataModel dataModel = new DataModel(executionContext);
-				for (String rm : commandLine.arguments.subList(1, commandLine.arguments.size())) {
-					if (dataModel.getRestrictionModel() == null) {
-						dataModel.setRestrictionModel(new RestrictionModel(dataModel, executionContext));
-					}
-					URL modelURL = new File(rm).toURI().toURL();
-					dataModel.getRestrictionModel().addRestrictionDefinition(modelURL, new HashMap<String, String>());
-				}
-				new DomainModel(dataModel).check();
-			} else if ("render-datamodel".equalsIgnoreCase(command)) {
+			if ("render-datamodel".equalsIgnoreCase(command)) {
 				if (commandLine.arguments.size() <= 1) {
-					CommandLineParser.printUsage();
+					CommandLineParser.printUsage(args);
 				} else {
 					renderDataModel(commandLine.arguments, commandLine.withClosures, commandLine.schema, executionContext);
 				}
 			} else if ("import".equalsIgnoreCase(command)) {
 				if (commandLine.arguments.size() != 6) {
-					CommandLineParser.printUsage();
+					CommandLineParser.printUsage(args);
 				} else {
 					BasicDataSource dataSource = new BasicDataSource(commandLine.arguments.get(2), commandLine.arguments.get(3), commandLine.arguments.get(4),
-							commandLine.arguments.get(5), 0, jdbcJarURLs);
+							pw = commandLine.arguments.get(5), 0, jdbcJarURLs);
 					Session session = new Session(dataSource, dataSource.dbms, commandLine.isolationLevel, null, commandLine.transactional);
 					try {
 						new SqlScriptExecutor(session, commandLine.numberOfThreads, false).executeScript(commandLine.arguments.get(1), commandLine.transactional);
@@ -201,8 +195,9 @@ public class Jailer {
 				printDataModel(commandLine.arguments, commandLine.withClosures, executionContext);
 			} else if ("export".equalsIgnoreCase(command)) {
 				if (commandLine.arguments.size() != 6) {
-					CommandLineParser.printUsage();
+					CommandLineParser.printUsage(args);
 				} else {
+					pw = commandLine.arguments.get(5);
 					if (commandLine.maxNumberOfEntities > 0) {
 						EntityGraph.maxTotalRowcount = commandLine.maxNumberOfEntities;
 						_log.info("max-rowcount=" + EntityGraph.maxTotalRowcount);
@@ -210,7 +205,7 @@ public class Jailer {
 					
 					if (commandLine.exportScriptFileName == null) {
 						System.out.println("missing '-e' option");
-						CommandLineParser.printUsage();
+						CommandLineParser.printUsage(args);
 					} else {
 						if (!commandLine.independentWorkingTables) {
 							PrimaryKeyFactory.createUPKScope(commandLine.arguments.get(1), executionContext);
@@ -225,11 +220,12 @@ public class Jailer {
 				}
 			} else if ("delete".equalsIgnoreCase(command)) {
 				if (commandLine.arguments.size() != 6) {
-					CommandLineParser.printUsage();
+					CommandLineParser.printUsage(args);
 				} else {
+					pw = commandLine.arguments.get(5);
 					if (commandLine.deleteScriptFileName == null) {
-						System.out.println("missing '-d' option");
-						CommandLineParser.printUsage();
+						System.out.println("can't delete: missing '-d' option");
+						CommandLineParser.printUsage(args);
 					} else {
 						BasicDataSource dataSource = new BasicDataSource(commandLine.arguments.get(2), commandLine.arguments.get(3),
 								commandLine.arguments.get(4), commandLine.arguments.get(5), 0, jdbcJarURLs);
@@ -245,7 +241,7 @@ public class Jailer {
 				}
 			} else if ("find-association".equalsIgnoreCase(command)) {
 				if (commandLine.arguments.size() < 3) {
-					CommandLineParser.printUsage();
+					CommandLineParser.printUsage(args);
 				} else {
 					findAssociation(commandLine.arguments.get(1), commandLine.arguments.get(2), commandLine.arguments.subList(3, commandLine.arguments.size()), commandLine.undirected, executionContext);
 				}
@@ -263,6 +259,17 @@ public class Jailer {
 						throw new RuntimeException("Please specify either a data model (e.g., \"-datamodel datamodel/Demo-Scott\") or an extraction model (But not both)");
 					}
 				}
+				if (commandLine.arguments.size() >= 5) {
+					pw = commandLine.arguments.get(4);
+					if (!commandLine.independentWorkingTables && commandLine.arguments.size() > 5) {
+						PrimaryKeyFactory.createUPKScope(extractionModelFileName, executionContext);
+					}
+					BasicDataSource dataSource = new BasicDataSource(commandLine.arguments.get(1), commandLine.arguments.get(2), commandLine.arguments.get(3), commandLine.arguments.get(4), 0, jdbcJarURLs);
+					return new DDLCreator(executionContext).createDDL(dataSource, dataSource.dbms, executionContext.getScope(), commandLine.workingTableSchema);
+				}
+				if (!commandLine.independentWorkingTables && commandLine.arguments.size() > 1) {
+					PrimaryKeyFactory.createUPKScope(extractionModelFileName, executionContext);
+				}
 				if (commandLine.targetDBMS == null) {
 					List<DBMS> dbmss = Configuration.getInstance().getDBMS();
 					System.err.println("");
@@ -274,35 +281,27 @@ public class Jailer {
 					}
 					System.err.println("");
 				}
-				if (commandLine.arguments.size() >= 5) {
-					if (!commandLine.independentWorkingTables && commandLine.arguments.size() > 5) {
-						PrimaryKeyFactory.createUPKScope(extractionModelFileName, executionContext);
-					}
-					BasicDataSource dataSource = new BasicDataSource(commandLine.arguments.get(1), commandLine.arguments.get(2), commandLine.arguments.get(3), commandLine.arguments.get(4), 0, jdbcJarURLs);
-					return new DDLCreator(executionContext).createDDL(dataSource, dataSource.dbms, executionContext.getScope(), commandLine.workingTableSchema);
-				}
-				if (!commandLine.independentWorkingTables && commandLine.arguments.size() > 1) {
-					PrimaryKeyFactory.createUPKScope(extractionModelFileName, executionContext);
-				}
 				return new DDLCreator(executionContext).createDDL((DataSource) null, null, executionContext.getScope(), commandLine.workingTableSchema);
 			} else if ("build-model-wo-merge".equalsIgnoreCase(command)) {
 				if (commandLine.arguments.size() != 5) {
-					CommandLineParser.printUsage();
+					CommandLineParser.printUsage(args);
 				} else {
+					pw = commandLine.arguments.get(4);
 					_log.info("Building data model.");
 					BasicDataSource dataSource = new BasicDataSource(commandLine.arguments.get(1), commandLine.arguments.get(2), commandLine.arguments.get(3), commandLine.arguments.get(4), 0, jdbcJarURLs);
 					ModelBuilder.build(dataSource, dataSource.dbms, commandLine.schema, warnings, executionContext);
 				}
 			} else if ("build-model".equalsIgnoreCase(command)) {
 				if (commandLine.arguments.size() != 5) {
-					CommandLineParser.printUsage();
+					CommandLineParser.printUsage(args);
 				} else {
+					pw = commandLine.arguments.get(4);
 					_log.info("Building data model.");
 					BasicDataSource dataSource = new BasicDataSource(commandLine.arguments.get(1), commandLine.arguments.get(2), commandLine.arguments.get(3), commandLine.arguments.get(4), 0, jdbcJarURLs);
 					ModelBuilder.buildAndMerge(dataSource, dataSource.dbms, commandLine.schema, warnings, executionContext);
 				}
 			} else {
-				CommandLineParser.printUsage();
+				CommandLineParser.printUsage(args);
 				return false;
 			}
 			return true;
@@ -312,7 +311,8 @@ public class Jailer {
 				throw e;
 			}
 			_log.error(e.getMessage(), e);
-			System.out.println("Error: " + e.getClass().getName() + ": " + e.getMessage());
+			System.err.println("Error: " + e.getClass().getName() + ": " + e.getMessage());
+			CommandLineParser.printAruments(System.err, args, pw);
 			String workingDirectory = System.getProperty("user.dir");
 			_log.error("working directory is " + workingDirectory);
 			throw e;

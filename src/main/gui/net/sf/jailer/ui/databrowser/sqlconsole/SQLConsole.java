@@ -47,6 +47,7 @@ import java.sql.Types;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
@@ -72,6 +73,7 @@ import javax.swing.JMenuItem;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
 import javax.swing.JTabbedPane;
+import javax.swing.JTable;
 import javax.swing.RowSorter;
 import javax.swing.RowSorter.SortKey;
 import javax.swing.SwingUtilities;
@@ -115,7 +117,6 @@ import net.sf.jailer.ui.databrowser.Row;
 import net.sf.jailer.ui.databrowser.metadata.MDSchema;
 import net.sf.jailer.ui.databrowser.metadata.MDTable;
 import net.sf.jailer.ui.databrowser.metadata.MetaDataDetailsPanel;
-import net.sf.jailer.ui.databrowser.metadata.MetaDataPanel;
 import net.sf.jailer.ui.databrowser.metadata.MetaDataPanel.OutlineInfo;
 import net.sf.jailer.ui.databrowser.metadata.MetaDataSource;
 import net.sf.jailer.ui.databrowser.metadata.ResultSetRenderer;
@@ -160,6 +161,7 @@ public abstract class SQLConsole extends javax.swing.JPanel {
     private final SQLPlusSupport sqlPlusSupport = new SQLPlusSupport();
 	private File file;
 	private JMenuItem menuItemToggle;
+	private JMenuItem menuItemToSingleLine;
 	private JMenuItem menuItemSubstituteVariables;
 	private JMenuItem menuItemAnalyse;
 	private int initialTabbedPaneSelection = 0;
@@ -201,6 +203,9 @@ public abstract class SQLConsole extends javax.swing.JPanel {
         jPanel5.add(historyComboBox, gridBagConstraints);
         
         this.editorPane = new RSyntaxTextAreaWithSQLSyntaxStyle(true, true) {
+        	{
+        		setBracketMatchingEnabled(true);
+        	}
 			@Override
 			protected boolean canExplain() {
 				return SQLConsole.this.canExplain();
@@ -268,6 +273,9 @@ public abstract class SQLConsole extends javax.swing.JPanel {
                         }
                     } else {
                         schema = SQLConsole.this.metaDataSource.getDefaultSchema();
+                        if (schema == null) {
+                            return null;
+                        }
                     }
                     return schema.find(matcher.group(2));
                 }
@@ -277,6 +285,7 @@ public abstract class SQLConsole extends javax.swing.JPanel {
         	@Override
         	protected void appendPopupMenu(JPopupMenu menu) {
         		menu.addSeparator();
+        		menu.add(menuItemToSingleLine);
         		menu.add(menuItemToggle);
         		menu.add(menuItemSubstituteVariables);
         		menu.addSeparator();
@@ -384,7 +393,7 @@ public abstract class SQLConsole extends javax.swing.JPanel {
                     }
                 } while (action != STOP);
             }
-        }, "console-thread-" + (threadNum++));
+        }, "SQLConsole-" + (threadNum++));
         thread.setDaemon(true);
         thread.start();
     }
@@ -403,6 +412,17 @@ public abstract class SQLConsole extends javax.swing.JPanel {
 				"<html>Adds (or remove) line-continuation-character ('\\') <br>" +
 				" to each line terminated by ';' <br>"
 				+ "(allowing you to execute PL/SQL code)");
+		
+		item = new JMenuItem("To Single Line");
+		item.setEnabled(false);
+		menuItemToSingleLine = item;
+		item.addActionListener(new ActionListener() {
+			@Override
+			public void actionPerformed(ActionEvent e) {
+				toSingleLine();
+			}
+		});
+		
 		item = new JMenuItem("Substitute Variables");
 		item.setEnabled(false);
 		menuItemSubstituteVariables = item;
@@ -435,6 +455,9 @@ public abstract class SQLConsole extends javax.swing.JPanel {
 	private void updateMenuItems(boolean isTextSelected) {
     	if (menuItemToggle != null) {
     		menuItemToggle.setEnabled(isTextSelected);
+    	}
+    	if (menuItemToSingleLine != null) {
+    		menuItemToSingleLine.setEnabled(isTextSelected);
     	}
     	if (menuItemSubstituteVariables != null) {
     		menuItemSubstituteVariables.setEnabled(isTextSelected);
@@ -743,11 +766,11 @@ public abstract class SQLConsole extends javax.swing.JPanel {
             		stmtId = "Jailer" + (nextPlanID++ % 8);
 				}
             	if (session.dbms.getExplainPrepare() != null && !session.dbms.getExplainPrepare().isEmpty()) {
-                	statement.execute(String.format(session.dbms.getExplainPrepare(), sqlStatement, stmtId));
+                	statement.execute(String.format(Locale.ENGLISH, session.dbms.getExplainPrepare(), sqlStatement, stmtId));
                 	statement.close();
             	}
                 statement = connection.createStatement();
-            	hasResultSet = statement.execute(String.format(session.dbms.getExplainQuery(), sqlStatement, stmtId));
+            	hasResultSet = statement.execute(String.format(Locale.ENGLISH, session.dbms.getExplainQuery(), sqlStatement, stmtId));
             } else {
             	sqlPlusResultSet = sqlPlusSupport.executeSQLPLusQuery(sqlStatement);
             	if (sqlPlusResultSet != null) {
@@ -847,7 +870,7 @@ public abstract class SQLConsole extends javax.swing.JPanel {
                 UIUtil.invokeLater(new Runnable() {
                     @Override
                     public void run() {
-                        final BrowserContentPane rb = new ResultContentPane(datamodel.get(), finalResultType, "", session, null, null,
+                        final BrowserContentPane rb = new ResultContentPane(datamodel.get(), finalResultType, "", session, null,
                                 null, null, new RowsClosure(), false, false, executionContext);
                         if (resultTypes != null && resultTypes.size() > 1) {
                             rb.setResultSetType(resultTypes);
@@ -874,9 +897,19 @@ public abstract class SQLConsole extends javax.swing.JPanel {
                         				origTabContentPanel == null? null : origTabContentPanel.shimPanel,
                         				caretDotMark);
                         tabContentPanel.contentPanel.add(rTabContainer);
+
+                        rb.setCurrentRowsTable(new Reference<JTable>() {
+                        	public JTable get() {
+                        		return tabContentPanel.tabbedPane.getSelectedComponent() == tabContentPanel.columnsPanel? columnsTable : rb.rowsTable;
+                        	}
+                        });
+
                         rb.sortColumnsCheckBox.setVisible(true);
                         rb.sortColumnsPanel.setVisible(false);
+                        rb.findColumnsPanel.setVisible(true);
+                        rb.sortColumnsCheckBox.setText(rb.sortColumnsCheckBox.getText().trim());
                         tabContentPanel.controlsPanel1.add(rb.sortColumnsCheckBox);
+                        tabContentPanel.controlsPanel1.add(rb.findColumnsPanel);
                         rb.sortColumnsCheckBox.addActionListener(new java.awt.event.ActionListener() {
                             @Override
 							public void actionPerformed(java.awt.event.ActionEvent evt) {
@@ -1115,7 +1148,7 @@ public abstract class SQLConsole extends javax.swing.JPanel {
             	if (session.dbms.getExplainPrepare() != null) {
                     try {
                     	statement = session.getConnection().createStatement();
-						statement.execute(String.format(session.dbms.getExplainCleanup(), sqlStatement, stmtId));
+						statement.execute(String.format(Locale.ENGLISH, session.dbms.getExplainCleanup(), sqlStatement, stmtId));
 	                	statement.close();
 					} catch (SQLException e) {
 	                    logger.info("error", e);
@@ -1133,20 +1166,13 @@ public abstract class SQLConsole extends javax.swing.JPanel {
     }
 
 	private boolean executeStatementWithLimit(Statement statement, String sqlStatement, Session session) throws SQLException {
-		if (DBMS.MySQL.equals(session.dbms)) {
-			try {
-				int limit = 1 + (Integer) limitComboBox.getSelectedItem();
-				Pattern pattern = Pattern.compile(".*\\blimit\\b\\s*([0-9]+)(\\s|\\))*$", Pattern.DOTALL|Pattern.CASE_INSENSITIVE);
-				Matcher matcher = pattern.matcher(sqlStatement);
-				if (matcher.matches()) {
-					if (Integer.parseInt(matcher.group(1)) < limit) {
-						return statement.execute(sqlStatement);
-					}
-				}
-				return statement.execute("(" + sqlStatement + "\n) limit " + limit);
-			} catch (Throwable e) {
-				return statement.execute(sqlStatement);
+		try {
+			int limit = 1 + (Integer) limitComboBox.getSelectedItem();
+			if (limit > 0) {
+				statement.setMaxRows(limit + 1);
 			}
+		} catch (Exception e) {
+			// ignore
 		}
 		return statement.execute(sqlStatement);
 	}
@@ -1211,7 +1237,7 @@ public abstract class SQLConsole extends javax.swing.JPanel {
                     ttEnd = Math.min(ttEnd, info.contextEnd);
                 }
                 if (cStart < cEnd) {
-	                String context = sql.substring(cStart, cEnd).trim().replaceAll("\\s+", " ");
+	                String context = UIUtil.removesuperfluousSpaces(sql.substring(cStart, cEnd).trim().replaceAll("\\s+", " "));
 	                if (context.length() > MAX_CONTEXT_LENGTH) {
 	                    context = context.substring(0, MAX_CONTEXT_LENGTH) + "...";
 	                }
@@ -1722,11 +1748,11 @@ public abstract class SQLConsole extends javax.swing.JPanel {
     // End of variables declaration//GEN-END:variables
 
     class ResultContentPane extends BrowserContentPane {
-        public ResultContentPane(DataModel dataModel, Table table, String condition, Session session, Row parentRow,
+        public ResultContentPane(DataModel dataModel, Table table, String condition, Session session,
                 List<Row> parentRows, Association association, Frame parentFrame,
                 RowsClosure rowsClosure, Boolean selectDistinct,
                 boolean reload, ExecutionContext executionContext) {
-            super(dataModel, table, condition, session, parentRow, parentRows, association, parentFrame, 
+            super(dataModel, table, condition, session, parentRows, association, parentFrame, 
             		rowsClosure, selectDistinct, reload, executionContext);
             noSingleRowDetailsView = true;
             rowsTableScrollPane.setWheelScrollingEnabled(true);
@@ -1761,7 +1787,7 @@ public abstract class SQLConsole extends javax.swing.JPanel {
         protected void onContentChange(List<Row> rows, boolean reloadChildren) {
         }
         @Override
-        protected RowBrowser navigateTo(Association association, int rowIndex, Row row) {
+        protected RowBrowser navigateTo(Association association, List<Row> pRows) {
         	return null;
         }
         @Override
@@ -1880,14 +1906,8 @@ public abstract class SQLConsole extends javax.swing.JPanel {
 
     private Icon closeIcon;
     {
-        String dir = "/net/sf/jailer/ui/resource";
-        
         // load images
-        try {
-            closeIcon = new ImageIcon(getClass().getResource(dir + "/Close-16-1.png"));
-        } catch (Exception e) {
-            logger.info("error", e);
-        }
+    	closeIcon = UIUtil.readImage("/Close-16-1.png");
     }
 
     /**
@@ -2209,6 +2229,14 @@ public abstract class SQLConsole extends javax.swing.JPanel {
         return -1;
     }
 
+    private void toSingleLine() {
+		String currentStatement = editorPane.getCurrentStatement(false);
+		String newStatement = UIUtil.toSingleLineSQL(currentStatement);
+		if (!currentStatement.equals(newStatement)) {
+			editorPane.replaceCurrentStatement(newStatement, false);
+		}
+	}
+
     private void toggleLineContinuation() {
 		String currentStatement = editorPane.getCurrentStatement(false);
 		String newStatement;
@@ -2416,17 +2444,11 @@ public abstract class SQLConsole extends javax.swing.JPanel {
     private int nextPlanID = 0;
     
     static {
-        String dir = "/net/sf/jailer/ui/resource";
-        
         // load images
-        try {
-            runIcon = new ImageIcon(MetaDataPanel.class.getResource(dir + "/run.png"));
-            runAllIcon = new ImageIcon(MetaDataPanel.class.getResource(dir + "/runall.png"));
-            cancelIcon = new ImageIcon(MetaDataPanel.class.getResource(dir + "/Cancel.png"));
-            explainIcon = new ImageIcon(MetaDataPanel.class.getResource(dir + "/explain.png"));
-        } catch (Exception e) {
-            logger.info("error", e);
-        }
+        runIcon = UIUtil.readImage("/run.png");
+        runAllIcon = UIUtil.readImage("/runall.png");
+        cancelIcon = UIUtil.readImage("/Cancel.png");
+        explainIcon = UIUtil.readImage("/explain.png");
     }
 
 }

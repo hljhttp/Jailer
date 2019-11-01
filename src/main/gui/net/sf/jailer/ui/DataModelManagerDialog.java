@@ -18,6 +18,7 @@ package net.sf.jailer.ui;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Cursor;
+import java.awt.Font;
 import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.event.ActionEvent;
@@ -33,21 +34,25 @@ import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
-import java.text.DateFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import javax.swing.DefaultComboBoxModel;
 import javax.swing.ImageIcon;
+import javax.swing.JButton;
 import javax.swing.JFileChooser;
 import javax.swing.JLabel;
 import javax.swing.JList;
 import javax.swing.JOptionPane;
+import javax.swing.JScrollPane;
 import javax.swing.JTable;
 import javax.swing.ListCellRenderer;
 import javax.swing.ListSelectionModel;
@@ -62,6 +67,11 @@ import net.sf.jailer.JailerVersion;
 import net.sf.jailer.datamodel.DataModel;
 import net.sf.jailer.modelbuilder.JDBCMetaDataBasedModelElementFinder;
 import net.sf.jailer.modelbuilder.ModelBuilder;
+import net.sf.jailer.ui.DbConnectionDialog.ConnectionInfo;
+import net.sf.jailer.ui.commandline.CommandLineInstance;
+import net.sf.jailer.ui.databrowser.BookmarksPanel;
+import net.sf.jailer.ui.databrowser.BookmarksPanel.BookmarkId;
+import net.sf.jailer.ui.databrowser.DataBrowser;
 import net.sf.jailer.ui.util.UISettings;
 import net.sf.jailer.util.Pair;
 
@@ -97,16 +107,28 @@ public abstract class DataModelManagerDialog extends javax.swing.JFrame {
 	 */
 	private List<String> baseFolders = new ArrayList<String>();;
 
-	private final ExecutionContext executionContext = new ExecutionContext(CommandLineInstance.getInstance());
-	
+	private final ExecutionContext executionContext = new ExecutionContext();
+
 	private DbConnectionDialog dbConnectionDialog;
-	private InfoBar infoBarConnection; 
-	
+	private DbConnectionDialog recUsedConnectionDialog;
+	private InfoBar infoBarConnection;
+	private InfoBar infoBarRecUsedConnection;
+	private InfoBar infoBarBookmark;
+	private InfoBar infoBarRecUsedBookmark;
+	private final String tabPropertyName;
+	private final String module; // TODO define module enum
+
+	private Font font =  new JLabel("normal").getFont();
+	private Font normal = new Font(font.getName(), font.getStyle() & ~Font.BOLD, font.getSize());
+    private Font bold = new Font(font.getName(), font.getStyle() | Font.BOLD, font.getSize());
+
 	/** 
 	 * Creates new.
 	 */
-	public DataModelManagerDialog(String applicationName, boolean withLoadJMButton) {
+	public DataModelManagerDialog(String applicationName, boolean withLoadJMButton, String module) {
 		this.applicationName = applicationName;
+		this.tabPropertyName = "DMMDPropTab" + module;
+		this.module = module;
 		initComponents();
 
 		InfoBar infoBar = new InfoBar("Data Model Configuration", 
@@ -114,7 +136,7 @@ public abstract class DataModelManagerDialog extends javax.swing.JFrame {
 				"database schemas, or use the data model editor to manually define tables and associations.\n \n",
 				"Select a data model to work with.");
 		UIUtil.replace(infoBarLabel, infoBar);
-		
+
 		InfoBar infoBarJM = new InfoBar("Load Extraction Model", 
 				"\n \n \n \n",
 				"Load a recently used model or choose a model file.");
@@ -125,32 +147,55 @@ public abstract class DataModelManagerDialog extends javax.swing.JFrame {
 				"\n \n \n",
 				"Select a database to work with.");
 
+		infoBarRecUsedConnection = new InfoBar("Recently used Database Connection", 
+				"Select a recently used connection to the database.\n" +
+				"\n \n \n",
+				"Select a database to work with.");
+
+		infoBarBookmark = new InfoBar("Bookmark", 
+				"Select a bookmark to open.\n" +
+				"\n \n \n",
+				"Select a bookmark.");
+		UIUtil.replace(infoBarLabelBookmark, infoBarBookmark);
+
+		infoBarRecUsedBookmark = new InfoBar("Recently used Bookmark", 
+				"Select a recently used bookmark to open.\n" +
+				"\n \n \n",
+				"Select a bookmark.");
+		UIUtil.replace(infoBarLabeRecUsedlBookmark, infoBarRecUsedBookmark);
+
 		if (!withLoadJMButton) {
 			jTabbedPane1.remove(loadJMPanel);
+		} else {
+			jTabbedPane1.remove(bookmarkPanel);
+			jTabbedPane1.remove(recentlyUsedBookmarkPanel);
 		}
-		
+
 		try {
-			ImageIcon imageIcon = new ImageIcon(getClass().getResource("/net/sf/jailer/ui/resource/jailer.png"));
+			ImageIcon imageIcon = UIUtil.readImage("/jailerlight.png");
 			setIconImage(imageIcon.getImage());
-			infoBar.setIcon(imageIcon);
-			infoBarJM.setIcon(imageIcon);
-			infoBarConnection.setIcon(imageIcon);
 		} catch (Throwable t) {
-			try {
-				ImageIcon imageIcon = new ImageIcon(getClass().getResource("/net/sf/jailer/ui/resource/jailer.gif"));
-				setIconImage(imageIcon.getImage());
-				infoBar.setIcon(imageIcon);
-				infoBarConnection.setIcon(imageIcon);
-			} catch (Throwable t2) {
-			}
 		}
+
+		ImageIcon imageIcon = UIUtil.readImage("/jailer.png");
+		if (imageIcon == null) {
+			imageIcon = UIUtil.readImage("jailer.gif");
+		}
+		infoBar.setIcon(imageIcon);
+		infoBarJM.setIcon(imageIcon);
+		infoBarConnection.setIcon(imageIcon);
+		infoBarRecUsedConnection.setIcon(imageIcon);
+		infoBarBookmark.setIcon(imageIcon);
+		infoBarRecUsedBookmark.setIcon(imageIcon);
 		
 		restore();
 		
 		loadModelList();
 		initTableModel();
-		initConnectionDialog();
-		
+		initConnectionDialog(true);
+		initConnectionDialog(false);
+		JTable bookmarkTable = initBookmarkTables();
+
 		final TableCellRenderer defaultTableCellRenderer = dataModelsTable
 				.getDefaultRenderer(String.class);
 		dataModelsTable.setShowGrid(false);
@@ -175,6 +220,7 @@ public abstract class DataModelManagerDialog extends javax.swing.JFrame {
 								((JLabel) render).setBackground(new Color(160, 200, 255));
 							}
 						}
+						render.setFont(column == 0? bold : normal);
 						return render;
 					}
 				});
@@ -281,19 +327,284 @@ public abstract class DataModelManagerDialog extends javax.swing.JFrame {
 			}
 		});
 		
-		setLocation(80, 130);
+		setLocation(70, 130);
 		pack();
-		setSize(Math.max(740, getWidth()), 450);
+		setSize(Math.max(840, getWidth()), 490);
 		refresh();
 		UIUtil.initPeer();
-		okButton.grabFocus();
+
+		initRestoreLastSessionButton(restoreLastSessionButton);
+		initRestoreLastSessionButton(restoreLastSessionButton1);
+		initRestoreLastSessionButton(restoreLastSessionButton2);
+		initRestoreLastSessionButton(restoreLastSessionButton3);
+		initRestoreLastSessionButton(dbConnectionDialog.restoreLastSessionButton);
+		initRestoreLastSessionButton(recUsedConnectionDialog.restoreLastSessionButton);
+
+		try {
+			Object tab = UISettings.restore(tabPropertyName);
+			if (tab instanceof Integer) {
+				jTabbedPane1.setSelectedIndex((Integer) tab);
+			}
+		} catch (Throwable t) {
+			// ignore
+		}
+		
+		if (jTabbedPane1.getSelectedComponent() == recentlyUsedBookmarkPanel) {
+			if (bookmarkTable.getModel().getRowCount() > 0) {
+				bookmarkTable.getSelectionModel().setSelectionInterval(0, 0);
+			}
+			if (bmRecUsedOkButton.isEnabled()) {
+				bmRecUsedOkButton.grabFocus();
+			}
+		} else if (jTabbedPane1.getSelectedComponent() == loadJMPanel) {
+			if (jmFilesTable.getModel().getRowCount() > 0) {
+				jmFilesTable.getSelectionModel().setSelectionInterval(0, 0);
+			}
+			if (jmOkButton.isEnabled()) {
+				jmOkButton.grabFocus();
+			}
+		} else if (jTabbedPane1.getSelectedComponent() == recUsedConnectionPanel) {
+			if (recUsedConnectionDialog != null) {
+				recUsedConnectionDialog.selectFirstConnection();
+			}
+		} else {
+			if (okButton.isEnabled()) {
+				okButton.grabFocus();
+			}
+		}
+	}
+
+	private JTable initBookmarkTables() {
+		loadBookmarks();
+		JTable bookmarkTable = createBookmarkTable(bmOkButton, false);
+		bookmarkDialogPanel.removeAll();
+		bookmarkDialogPanel.add(new JScrollPane(bookmarkTable));
+		bookmarkTable = createBookmarkTable(bmRecUsedOkButton, true);
+		bookmarkRecUsedDialogPanel.removeAll();
+		bookmarkRecUsedDialogPanel.add(new JScrollPane(bookmarkTable));
+		return bookmarkTable;
+	}
+
+	private void initRestoreLastSessionButton(JButton restoreButton) {
+		restoreButton.setVisible(true);
+		final boolean forEMEditor = "S".equals(module);
+		final BookmarkId lastSession = UISettings.restoreLastSession(module);
+		if (lastSession == null) {
+			restoreButton.setEnabled(false);
+			return;
+		}
+		Date date = forEMEditor? lastSession.date : DataBrowser.getLastSessionDate();
+		if (date == null || !modelList.contains(lastSession.datamodelFolder)) {
+			restoreButton.setEnabled(false);
+			return;
+		}
+		ConnectionInfo connectionInfo = null;
+		for (ConnectionInfo ci: dbConnectionDialog.getConnectionList()) {
+			if (ci.alias != null && ci.alias.equals(lastSession.connectionAlias)) {
+				connectionInfo = ci;
+				break;
+			}
+		}
+		if (connectionInfo == null && !forEMEditor) {
+			restoreButton.setEnabled(false);
+			return;
+		}
+		Pair<String, Long> details = modelDetails.get(lastSession.datamodelFolder);
+		restoreButton.setToolTipText(
+				UIUtil.toHTML(
+					(lastSession.bookmark != null? (new File(lastSession.bookmark).getName()) : ((details != null? details.a : lastSession.datamodelFolder))) + "\n" +
+					(connectionInfo == null? "offline\n" : (connectionInfo.alias + " (" + connectionInfo.user + "@" + connectionInfo.url + ")\n")) +
+					UIUtil.toDateAsString(date.getTime()), 0));
+		final ConnectionInfo finalConnectionInfo = connectionInfo;
+		restoreButton.addActionListener(new ActionListener() {
+			@Override
+			public void actionPerformed(ActionEvent e) {
+				openBookmark(new BookmarkId(forEMEditor? lastSession.bookmark : "", lastSession.datamodelFolder, lastSession.connectionAlias, lastSession.rawSchemaMapping), finalConnectionInfo);
+				setVisible(false);
+				dispose();
+			}
+		});
+	}
+
+	private final List<BookmarksPanel.BookmarkId> bookmarks = new ArrayList<BookmarksPanel.BookmarkId>();
+	private final Map<BookmarksPanel.BookmarkId, DbConnectionDialog.ConnectionInfo> ciOfBookmark = new HashMap<BookmarksPanel.BookmarkId, DbConnectionDialog.ConnectionInfo>();
+
+	private void loadBookmarks() {
+		bookmarks.clear();
+		ciOfBookmark.clear();
+		for (String model: modelList) {
+			if (model != null) {
+				for (ConnectionInfo ci: dbConnectionDialog.getConnectionList()) {
+					if (ci.dataModelFolder != null && ci.dataModelFolder.equals(model)) {
+						for (String bmName: BookmarksPanel.getAllBookmarks(model, executionContext)) {
+							BookmarkId bm = new BookmarkId(bmName, model, ci.alias, null);
+							bookmarks.add(bm);
+							ciOfBookmark.put(bm, ci);
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	private String bookmarkHash(BookmarkId bookmark) {
+		return bookmark.bookmark + "\t" + bookmark.datamodelFolder + "\t" + bookmark.connectionAlias;
+	}
+	
+	private JTable createBookmarkTable(final JButton okButton, boolean onlyRecentlyUsed) {
+		final List<BookmarksPanel.BookmarkId> bookmarksListModel = new ArrayList<BookmarksPanel.BookmarkId>();
+		Set<String> bookmarksHash = new HashSet<String>();
+		for (BookmarksPanel.BookmarkId bookmark: bookmarks) {
+			Pair<String, Long> details = modelDetails.get(bookmark.datamodelFolder);
+			if (details != null) {
+				ConnectionInfo ci = ciOfBookmark.get(bookmark);
+				if (ci != null) {
+					bookmarksListModel.add(bookmark);
+					bookmarksHash.add(bookmarkHash(bookmark));
+				}
+			}
+		}
+		if (onlyRecentlyUsed) {
+			List<BookmarksPanel.BookmarkId> newBookmarksListModel = new ArrayList<BookmarksPanel.BookmarkId>();
+			for (BookmarkId bookmark: UISettings.loadRecentBookmarks()) {
+				if (bookmarksHash.contains(bookmarkHash(bookmark))) {
+					newBookmarksListModel.add(bookmark);
+				}
+			}
+			bookmarksListModel.clear();
+			bookmarksListModel.addAll(newBookmarksListModel);
+		}
+		Object[][] data = new Object[bookmarksListModel.size()][];
+		for (int i = 0; i < bookmarksListModel.size(); ++i) {
+			BookmarkId bookmark = bookmarksListModel.get(i);
+			Pair<String, Long> details = modelDetails.get(bookmark.datamodelFolder);
+			ConnectionInfo ci = ciOfBookmark.get(bookmark);
+			data[i] = onlyRecentlyUsed?
+					new Object[] { 
+						bookmark.bookmark, 
+						details.a, 
+						bookmark.connectionAlias, 
+						ci.user, 
+						ci.url,
+						UIUtil.toDateAsString(bookmark.date)
+					} :
+					new Object[] { 
+						bookmark.bookmark, 
+						details.a, 
+						bookmark.connectionAlias, 
+						ci.user, 
+						ci.url
+					};
+		}
+		
+		DefaultTableModel tableModel = new DefaultTableModel(data, 
+				onlyRecentlyUsed? 
+						new String[] {"Bookmark", "Data Model", "Connection", "User", "URL", "Time"}
+							: new String[] { "Bookmark", "Data Model", "Connection", "User", "URL" }) {
+			@Override
+			public boolean isCellEditable(int row, int column) {
+				return false;
+			}
+			private static final long serialVersionUID = 1535384744352159695L;
+		};
+		
+		final JTable jTable = new JTable();
+			
+		jTable.setModel(tableModel);
+
+		final TableCellRenderer defaultTableCellRenderer = jTable.getDefaultRenderer(String.class);
+		jTable.setShowGrid(false);
+		jTable.setDefaultRenderer(Object.class,
+			new TableCellRenderer() {
+				@Override
+				public Component getTableCellRendererComponent(
+						JTable table, Object value, boolean isSelected,
+						boolean hasFocus, int row, int column) {
+					Component render = defaultTableCellRenderer
+							.getTableCellRendererComponent(table, value,
+									false, hasFocus, row, column);
+					if (render instanceof JLabel) {
+						final Color BG1 = new Color(255, 255, 255);
+						final Color BG2 = new Color(242, 255, 242);
+						if (!isSelected) {
+							((JLabel) render)
+								.setBackground((row % 2 == 0) ? BG1
+										: BG2);
+						} else {
+							((JLabel) render).setBackground(new Color(160, 200, 255));
+						}
+						((JLabel) render).setToolTipText(((JLabel) render).getText());
+					}
+					render.setFont(column == 0? bold : normal);
+					return render;
+				}
+			});
+		jTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+		jTable.getSelectionModel().addListSelectionListener(
+			new ListSelectionListener() {
+				@Override
+				public void valueChanged(ListSelectionEvent evt) {
+					okButton.setEnabled(jTable.getSelectedRow() >= 0);
+				}
+			});
+		
+		final ActionListener onOk = new ActionListener() {
+			@Override
+			public void actionPerformed(ActionEvent e) {
+				int i = jTable.getSelectedRow();
+				if (i >= 0 && i < bookmarksListModel.size()) {
+					BookmarkId bookmark = bookmarksListModel.get(i);
+					ConnectionInfo ci = ciOfBookmark.get(bookmark);
+					openBookmark(new BookmarkId(bookmark.bookmark, bookmark.datamodelFolder, bookmark.connectionAlias, bookmark.rawSchemaMapping), ci);
+					setVisible(false);
+					dispose();
+				}
+			}
+		};
+		okButton.addActionListener(onOk);
+
+		jTable.addMouseListener(new MouseAdapter() {
+			@Override
+			public void mousePressed(MouseEvent me) {
+				JTable table =(JTable) me.getSource();
+				Point p = me.getPoint();
+				int row = table.rowAtPoint(p);
+				if (me.getClickCount() >= 2) {
+					table.getSelectionModel().setSelectionInterval(row, row);
+					onOk.actionPerformed(null);
+				}
+			}
+		});
+		
+		for (int i = 0; i < jTable.getColumnCount(); i++) {
+			TableColumn column = jTable.getColumnModel().getColumn(i);
+			int width = i == 0? 100 : 1;
+			Component comp = jTable.getDefaultRenderer(String.class).getTableCellRendererComponent(jTable, column.getHeaderValue(), false, false, 0, i);
+			width = Math.max(width, comp.getPreferredSize().width);
+
+			for (int line = 0; line < data.length; ++line) {
+				comp = jTable.getDefaultRenderer(String.class).getTableCellRendererComponent(jTable, 
+						data[line][i],false, false, line, i);
+				width = Math.max(width, Math.min(250, comp.getPreferredSize().width));
+			}
+			if (onlyRecentlyUsed && i == jTable.getColumnCount() - 1) {
+				width = Math.max(width, 150);
+			}
+			column.setPreferredWidth(width);
+		}
+
+		return jTable;
 	}
 
 	private final List<File> fileList = new ArrayList<File>();
 
 	private void initJMTable() {
+		Map<File, Date> timestamps = new HashMap<File, Date>();
 		try {
-			fileList.addAll(UISettings.loadRecentFiles());
+			for (Pair<File, Date> file: UISettings.loadRecentFiles()) {
+				fileList.add(file.a);
+				timestamps.put(file.a, file.b);
+			}
 		} catch (Exception e) {
 			// ignore
 		}
@@ -302,13 +613,15 @@ public abstract class DataModelManagerDialog extends javax.swing.JFrame {
 		for (File file: fileList) {
 			try {
 				if (file.exists()) {
-					data[i++] = new Object[] { file.getName(), file.getAbsoluteFile().getParent() };
+					data[i++] = new Object[] { file.getName(), file.getAbsoluteFile().getParent(), UIUtil.toDateAsString(timestamps.get(file)) };
 				}
 			} catch (Exception e) {
 				// ignore
 			}
 		}
-		DefaultTableModel tableModel = new DefaultTableModel(data, new String[] { "Name", "Path" }) {
+		data = Arrays.copyOf(data, i);
+		
+		DefaultTableModel tableModel = new DefaultTableModel(data, new String[] { "Name", "Path", "Time" }) {
 			@Override
 			public boolean isCellEditable(int row, int column) {
 				return false;
@@ -339,8 +652,8 @@ public abstract class DataModelManagerDialog extends javax.swing.JFrame {
 							} else {
 								((JLabel) render).setBackground(new Color(160, 200, 255));
 							}
-							((JLabel) render).setForeground(column == 0? Color.black : Color.gray);
 						}
+						render.setFont(column == 0? bold : normal);
 						return render;
 					}
 				});
@@ -353,6 +666,19 @@ public abstract class DataModelManagerDialog extends javax.swing.JFrame {
 						jmOkButton.setEnabled(jmFilesTable.getSelectedRow() >= 0);
 					}
 				});
+		for (i = 0; i < jmFilesTable.getColumnCount(); i++) {
+			TableColumn column = jmFilesTable.getColumnModel().getColumn(i);
+			int width = i == 0? 200 : 1;
+			Component comp = jmFilesTable.getDefaultRenderer(String.class).getTableCellRendererComponent(jmFilesTable, column.getHeaderValue(), false, false, 0, i);
+			width = Math.max(width, comp.getPreferredSize().width);
+
+			for (int line = 0; line < data.length; ++line) {
+				comp = jmFilesTable.getDefaultRenderer(String.class).getTableCellRendererComponent(jmFilesTable, 
+						data[line][i],false, false, line, i);
+				width = Math.max(width, Math.min(150, comp.getPreferredSize().width));
+			}
+			column.setPreferredWidth(width);
+		}
 		jmFilesTable.addMouseListener(new MouseAdapter() {
 			@Override
 			public void mousePressed(MouseEvent me) {
@@ -367,8 +693,8 @@ public abstract class DataModelManagerDialog extends javax.swing.JFrame {
 		});
 	}
 
-	private void initConnectionDialog() {
-		dbConnectionDialog = new DbConnectionDialog(null, JailerVersion.APPLICATION_NAME, infoBarConnection, executionContext, false) {
+	private void initConnectionDialog(boolean all) {
+		DbConnectionDialog dialog = new DbConnectionDialog(this, JailerVersion.APPLICATION_NAME, all? infoBarConnection : infoBarRecUsedConnection, executionContext, false, !all) {
 			@Override
 			protected boolean isAssignedToDataModel(String dataModelFolder) {
 				return modelList.contains(dataModelFolder);
@@ -381,21 +707,32 @@ public abstract class DataModelManagerDialog extends javax.swing.JFrame {
 				} else {
 					DataModelManager.setCurrentModelSubfolder(currentConnection.dataModelFolder, executionContext);
 					setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
+					dbConnectionDialog.currentConnection = currentConnection;
+					dbConnectionDialog.isConnected = true;
+					store();
 					onSelect(dbConnectionDialog, executionContext);
+					UISettings.store(tabPropertyName, jTabbedPane1.getSelectedIndex());
 					setCursor(Cursor.getPredefinedCursor(Cursor.DEFAULT_CURSOR));
 					DataModelManagerDialog.this.setVisible(false);
 					DataModelManagerDialog.this.dispose();
 				}
 			}
 		};
-		dbConnectionDialog.closeButton.addActionListener(new ActionListener() {
+		dialog.closeButton.addActionListener(new ActionListener() {
 			@Override
 			public void actionPerformed(ActionEvent e) {
 				close();
 			}
 		});
-		connectionDialogPanel.removeAll();
-		connectionDialogPanel.add(dbConnectionDialog.mainPanel);
+		if (all) {
+			dbConnectionDialog = dialog;
+			connectionDialogPanel.removeAll();
+			connectionDialogPanel.add(dialog.mainPanel);
+		} else {
+			recUsedConnectionDialog = dialog;
+			recUsedConnectionDialogPanel.removeAll();
+			recUsedConnectionDialogPanel.add(dialog.mainPanel);
+		}
 	}
 	
 	private void updateLocationComboboxModel() {
@@ -434,7 +771,7 @@ public abstract class DataModelManagerDialog extends javax.swing.JFrame {
 		int i = 0;
 		for (String model: modelList) {
 			Pair<String, Long> details = modelDetails.get(model);
-			data[i++] = new Object[] { details == null? "" : details.a, model == null || model.length() == 0? "." : model, details == null? "" : toDateAsString(details.b) };
+			data[i++] = new Object[] { details == null? "" : details.a, model == null || model.length() == 0? "." : model, details == null? "" : UIUtil.toDateAsString(details.b) };
 		}
 		DefaultTableModel tableModel = new DefaultTableModel(data, new String[] { "Data Model", "Subfolder", "Last Modified" }) {
 			@Override
@@ -445,13 +782,6 @@ public abstract class DataModelManagerDialog extends javax.swing.JFrame {
 		};
 		dataModelsTable.setModel(tableModel);
 		return data;
-	}
-
-	private String toDateAsString(Long time) {
-		if (time == null) {
-			return "";
-		}
-		return DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT, Environment.initialLocal).format(new Date(time));
 	}
 
 	private boolean inRefresh = false;
@@ -510,7 +840,9 @@ public abstract class DataModelManagerDialog extends javax.swing.JFrame {
 				column.setPreferredWidth(width);
 			}
 			refreshButtons();
-			initConnectionDialog();
+			initConnectionDialog(true);
+			initConnectionDialog(false);
+			initBookmarkTables();
 		} finally {
 			inRefresh = false;
 		}
@@ -532,7 +864,20 @@ public abstract class DataModelManagerDialog extends javax.swing.JFrame {
 	 * Stores the selection.
 	 */
 	private void store() {
-		if (currentModel != null) {
+		String cm = currentModel;
+		if (cm == null) {
+			try {
+				File file = Environment.newFile(MODEL_SELECTION_FILE);
+				if (file.exists()) {
+					BufferedReader in = new BufferedReader(new FileReader(file));
+					cm = in.readLine();
+					in.close();
+				}
+			} catch (Exception e) {
+				// ignore
+			}
+		}
+		if (cm != null) {
 			try {
 				File file = Environment.newFile(MODEL_SELECTION_FILE);
 				BufferedWriter out = new BufferedWriter(new FileWriter(file));
@@ -547,7 +892,30 @@ public abstract class DataModelManagerDialog extends javax.swing.JFrame {
 			}
 		}
 	}
-	
+
+	/**
+	 * Reads in and set currentBaseFolder.
+	 */
+	public static void setCurrentBaseFolder(ExecutionContext executionContext) {
+		String currentBaseFolder = null;
+		try {
+			File file = Environment.newFile(MODEL_SELECTION_FILE);
+			if (file.exists()) {
+				BufferedReader in = new BufferedReader(new FileReader(file));
+				String cm = in.readLine();
+				if (cm != null) {
+					currentBaseFolder = in.readLine();
+				}
+				in.close();
+			}
+		} catch (Exception e) {
+			// ignore
+		}
+		if (currentBaseFolder != null && new File(currentBaseFolder).exists()) {
+			executionContext.setDatamodelFolder(currentBaseFolder);
+		}
+	}
+
 	/**
 	 * Restores the selection.
 	 */
@@ -557,35 +925,39 @@ public abstract class DataModelManagerDialog extends javax.swing.JFrame {
 		baseFolders.clear();
 		try {
 			File file = Environment.newFile(MODEL_SELECTION_FILE);
-			BufferedReader in = new BufferedReader(new FileReader(file));
-			currentModel = in.readLine();
-			if (currentModel != null) {
-				currentBaseFolder = in.readLine();
-				if (currentBaseFolder != null) {
-					for (;;) {
-						String bf = in.readLine();
-						if (bf == null) {
-							break;
+			if (file.exists()) {
+				BufferedReader in = new BufferedReader(new FileReader(file));
+				currentModel = in.readLine();
+				if (currentModel != null) {
+					currentBaseFolder = in.readLine();
+					if (currentBaseFolder != null) {
+						for (;;) {
+							String bf = in.readLine();
+							if (bf == null) {
+								break;
+							}
+							baseFolders.add(bf);
 						}
-						baseFolders.add(bf);
 					}
 				}
+				in.close();
 			}
-			in.close();
 		} catch (Exception e) {
 			// ignore
 		}
 		if (currentBaseFolder == null || !new File(currentBaseFolder).exists()) {
 			currentBaseFolder = executionContext.getDatamodelFolder();
 		}
-		if (!baseFolders.contains(executionContext.getDatamodelFolder())) {
-			baseFolders.add(0, executionContext.getDatamodelFolder());
+		if (executionContext.getDatamodelFolder() != null) {
+			if (!baseFolders.contains(executionContext.getDatamodelFolder())) {
+				baseFolders.add(0, executionContext.getDatamodelFolder());
+			}
 		}
 		baseFolders.remove(currentBaseFolder);
 		baseFolders.add(0, currentBaseFolder);
 		executionContext.setDatamodelFolder(currentBaseFolder);
 	}
-	
+
 	/**
 	 * This method is called from within the constructor to initialize the form.
 	 * WARNING: Do NOT modify this code. The content of this method is always
@@ -606,23 +978,43 @@ public abstract class DataModelManagerDialog extends javax.swing.JFrame {
         jSeparator1 = new javax.swing.JSeparator();
         jButton2 = new javax.swing.JButton();
         okButton = new javax.swing.JButton();
-        jScrollPane2 = new javax.swing.JScrollPane();
-        dataModelsTable = new javax.swing.JTable();
+        restoreLastSessionButton = new javax.swing.JButton();
         jPanel3 = new javax.swing.JPanel();
         newButton = new javax.swing.JButton();
         editButton = new javax.swing.JButton();
         analyzeButton = new javax.swing.JButton();
         deleteButton = new javax.swing.JButton();
         infoBarLabel = new javax.swing.JLabel();
+        jPanel6 = new javax.swing.JPanel();
+        jScrollPane2 = new javax.swing.JScrollPane();
+        dataModelsTable = new javax.swing.JTable();
         loadJMPanel = new javax.swing.JPanel();
         infoBarLabel2 = new javax.swing.JLabel();
         loadExtractionModelButton = new javax.swing.JButton();
-        jScrollPane3 = new javax.swing.JScrollPane();
-        jmFilesTable = new javax.swing.JTable();
         jmOkButton = new javax.swing.JButton();
         jmCancelButton = new javax.swing.JButton();
+        jPanel7 = new javax.swing.JPanel();
+        jScrollPane3 = new javax.swing.JScrollPane();
+        jmFilesTable = new javax.swing.JTable();
+        restoreLastSessionButton1 = new javax.swing.JButton();
         jPanel5 = new javax.swing.JPanel();
         connectionDialogPanel = new javax.swing.JPanel();
+        recUsedConnectionPanel = new javax.swing.JPanel();
+        recUsedConnectionDialogPanel = new javax.swing.JPanel();
+        bookmarkPanel = new javax.swing.JPanel();
+        borderPanel = new javax.swing.JPanel();
+        bookmarkDialogPanel = new javax.swing.JPanel();
+        infoBarLabelBookmark = new javax.swing.JLabel();
+        bmCancelButton = new javax.swing.JButton();
+        bmOkButton = new javax.swing.JButton();
+        restoreLastSessionButton2 = new javax.swing.JButton();
+        recentlyUsedBookmarkPanel = new javax.swing.JPanel();
+        borderPanel1 = new javax.swing.JPanel();
+        bookmarkRecUsedDialogPanel = new javax.swing.JPanel();
+        infoBarLabeRecUsedlBookmark = new javax.swing.JLabel();
+        bmRecUsedCancelButton = new javax.swing.JButton();
+        bmRecUsedOkButton = new javax.swing.JButton();
+        restoreLastSessionButton3 = new javax.swing.JButton();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.DISPOSE_ON_CLOSE);
         setTitle("Connect with DB");
@@ -678,7 +1070,7 @@ public abstract class DataModelManagerDialog extends javax.swing.JFrame {
         gridBagConstraints.gridx = 2;
         gridBagConstraints.gridy = 1;
         gridBagConstraints.anchor = java.awt.GridBagConstraints.NORTHEAST;
-        gridBagConstraints.insets = new java.awt.Insets(4, 0, 0, 4);
+        gridBagConstraints.insets = new java.awt.Insets(2, 0, 0, 4);
         jPanel2.add(jButton2, gridBagConstraints);
 
         okButton.setText(" OK ");
@@ -691,9 +1083,22 @@ public abstract class DataModelManagerDialog extends javax.swing.JFrame {
         gridBagConstraints.gridx = 1;
         gridBagConstraints.gridy = 1;
         gridBagConstraints.anchor = java.awt.GridBagConstraints.NORTHEAST;
-        gridBagConstraints.weightx = 1.0;
-        gridBagConstraints.insets = new java.awt.Insets(4, 4, 0, 4);
+        gridBagConstraints.insets = new java.awt.Insets(2, 4, 0, 2);
         jPanel2.add(okButton, gridBagConstraints);
+
+        restoreLastSessionButton.setText("Restore last Session");
+        restoreLastSessionButton.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                restoreLastSessionButtonActionPerformed(evt);
+            }
+        });
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 0;
+        gridBagConstraints.gridy = 1;
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.NORTHEAST;
+        gridBagConstraints.weightx = 1.0;
+        gridBagConstraints.insets = new java.awt.Insets(2, 2, 0, 16);
+        jPanel2.add(restoreLastSessionButton, gridBagConstraints);
 
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 0;
@@ -702,29 +1107,6 @@ public abstract class DataModelManagerDialog extends javax.swing.JFrame {
         gridBagConstraints.fill = java.awt.GridBagConstraints.BOTH;
         gridBagConstraints.weightx = 1.0;
         jPanel1.add(jPanel2, gridBagConstraints);
-
-        jScrollPane2.setBorder(javax.swing.BorderFactory.createTitledBorder("Data Models"));
-
-        dataModelsTable.setModel(new javax.swing.table.DefaultTableModel(
-            new Object [][] {
-                {null, null, null, null},
-                {null, null, null, null},
-                {null, null, null, null},
-                {null, null, null, null}
-            },
-            new String [] {
-                "Title 1", "Title 2", "Title 3", "Title 4"
-            }
-        ));
-        jScrollPane2.setViewportView(dataModelsTable);
-
-        gridBagConstraints = new java.awt.GridBagConstraints();
-        gridBagConstraints.gridx = 0;
-        gridBagConstraints.gridy = 20;
-        gridBagConstraints.fill = java.awt.GridBagConstraints.BOTH;
-        gridBagConstraints.weightx = 1.0;
-        gridBagConstraints.weighty = 1.0;
-        jPanel1.add(jScrollPane2, gridBagConstraints);
 
         jPanel3.setLayout(new java.awt.GridBagLayout());
 
@@ -794,6 +1176,38 @@ public abstract class DataModelManagerDialog extends javax.swing.JFrame {
         gridBagConstraints.fill = java.awt.GridBagConstraints.BOTH;
         jPanel1.add(infoBarLabel, gridBagConstraints);
 
+        jPanel6.setBorder(javax.swing.BorderFactory.createTitledBorder("Data Models"));
+        jPanel6.setLayout(new java.awt.GridBagLayout());
+
+        dataModelsTable.setModel(new javax.swing.table.DefaultTableModel(
+            new Object [][] {
+                {null, null, null, null},
+                {null, null, null, null},
+                {null, null, null, null},
+                {null, null, null, null}
+            },
+            new String [] {
+                "Title 1", "Title 2", "Title 3", "Title 4"
+            }
+        ));
+        jScrollPane2.setViewportView(dataModelsTable);
+
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 0;
+        gridBagConstraints.gridy = 20;
+        gridBagConstraints.fill = java.awt.GridBagConstraints.BOTH;
+        gridBagConstraints.weightx = 1.0;
+        gridBagConstraints.weighty = 1.0;
+        jPanel6.add(jScrollPane2, gridBagConstraints);
+
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 0;
+        gridBagConstraints.gridy = 20;
+        gridBagConstraints.fill = java.awt.GridBagConstraints.BOTH;
+        gridBagConstraints.weightx = 1.0;
+        gridBagConstraints.weighty = 1.0;
+        jPanel1.add(jPanel6, gridBagConstraints);
+
         jTabbedPane1.addTab("Data Model", jPanel1);
 
         loadJMPanel.setLayout(new java.awt.GridBagLayout());
@@ -802,7 +1216,7 @@ public abstract class DataModelManagerDialog extends javax.swing.JFrame {
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 0;
         gridBagConstraints.gridy = 1;
-        gridBagConstraints.gridwidth = 3;
+        gridBagConstraints.gridwidth = 4;
         gridBagConstraints.fill = java.awt.GridBagConstraints.BOTH;
         loadJMPanel.add(infoBarLabel2, gridBagConstraints);
 
@@ -815,11 +1229,39 @@ public abstract class DataModelManagerDialog extends javax.swing.JFrame {
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 0;
         gridBagConstraints.gridy = 3;
-        gridBagConstraints.anchor = java.awt.GridBagConstraints.NORTHWEST;
-        gridBagConstraints.insets = new java.awt.Insets(4, 4, 0, 4);
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.NORTHEAST;
+        gridBagConstraints.weightx = 1.0;
+        gridBagConstraints.insets = new java.awt.Insets(4, 0, 0, 2);
         loadJMPanel.add(loadExtractionModelButton, gridBagConstraints);
 
-        jScrollPane3.setBorder(javax.swing.BorderFactory.createTitledBorder("Recent Files"));
+        jmOkButton.setText(" OK ");
+        jmOkButton.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                jmOkButtonActionPerformed(evt);
+            }
+        });
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 2;
+        gridBagConstraints.gridy = 3;
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.NORTHEAST;
+        gridBagConstraints.insets = new java.awt.Insets(4, 4, 0, 2);
+        loadJMPanel.add(jmOkButton, gridBagConstraints);
+
+        jmCancelButton.setText(" Cancel ");
+        jmCancelButton.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                jmCancelButtonActionPerformed(evt);
+            }
+        });
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 3;
+        gridBagConstraints.gridy = 3;
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.NORTHEAST;
+        gridBagConstraints.insets = new java.awt.Insets(4, 0, 0, 4);
+        loadJMPanel.add(jmCancelButton, gridBagConstraints);
+
+        jPanel7.setBorder(javax.swing.BorderFactory.createTitledBorder("Recent Files"));
+        jPanel7.setLayout(new java.awt.GridBagLayout());
 
         jmFilesTable.setModel(new javax.swing.table.DefaultTableModel(
             new Object [][] {
@@ -841,34 +1283,29 @@ public abstract class DataModelManagerDialog extends javax.swing.JFrame {
         gridBagConstraints.fill = java.awt.GridBagConstraints.BOTH;
         gridBagConstraints.weightx = 1.0;
         gridBagConstraints.weighty = 1.0;
-        loadJMPanel.add(jScrollPane3, gridBagConstraints);
+        jPanel7.add(jScrollPane3, gridBagConstraints);
 
-        jmOkButton.setText(" OK ");
-        jmOkButton.addActionListener(new java.awt.event.ActionListener() {
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 0;
+        gridBagConstraints.gridy = 2;
+        gridBagConstraints.gridwidth = 4;
+        gridBagConstraints.fill = java.awt.GridBagConstraints.BOTH;
+        gridBagConstraints.weightx = 1.0;
+        gridBagConstraints.weighty = 1.0;
+        loadJMPanel.add(jPanel7, gridBagConstraints);
+
+        restoreLastSessionButton1.setText("Restore last Session");
+        restoreLastSessionButton1.addActionListener(new java.awt.event.ActionListener() {
             public void actionPerformed(java.awt.event.ActionEvent evt) {
-                jmOkButtonActionPerformed(evt);
+                restoreLastSessionButton1ActionPerformed(evt);
             }
         });
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 1;
         gridBagConstraints.gridy = 3;
         gridBagConstraints.anchor = java.awt.GridBagConstraints.NORTHEAST;
-        gridBagConstraints.weightx = 1.0;
-        gridBagConstraints.insets = new java.awt.Insets(4, 4, 0, 4);
-        loadJMPanel.add(jmOkButton, gridBagConstraints);
-
-        jmCancelButton.setText(" Cancel ");
-        jmCancelButton.addActionListener(new java.awt.event.ActionListener() {
-            public void actionPerformed(java.awt.event.ActionEvent evt) {
-                jmCancelButtonActionPerformed(evt);
-            }
-        });
-        gridBagConstraints = new java.awt.GridBagConstraints();
-        gridBagConstraints.gridx = 2;
-        gridBagConstraints.gridy = 3;
-        gridBagConstraints.anchor = java.awt.GridBagConstraints.NORTHEAST;
-        gridBagConstraints.insets = new java.awt.Insets(4, 0, 0, 4);
-        loadJMPanel.add(jmCancelButton, gridBagConstraints);
+        gridBagConstraints.insets = new java.awt.Insets(4, 0, 0, 16);
+        loadJMPanel.add(restoreLastSessionButton1, gridBagConstraints);
 
         jTabbedPane1.addTab("Extraction Model", loadJMPanel);
 
@@ -885,12 +1322,174 @@ public abstract class DataModelManagerDialog extends javax.swing.JFrame {
 
         jTabbedPane1.addTab("Connection", jPanel5);
 
+        recUsedConnectionPanel.setLayout(new java.awt.GridBagLayout());
+
+        recUsedConnectionDialogPanel.setLayout(new java.awt.BorderLayout());
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 1;
+        gridBagConstraints.gridy = 10;
+        gridBagConstraints.fill = java.awt.GridBagConstraints.BOTH;
+        gridBagConstraints.weightx = 1.0;
+        gridBagConstraints.weighty = 1.0;
+        recUsedConnectionPanel.add(recUsedConnectionDialogPanel, gridBagConstraints);
+
+        jTabbedPane1.addTab("Recently used Connection", recUsedConnectionPanel);
+
+        bookmarkPanel.setLayout(new java.awt.GridBagLayout());
+
+        borderPanel.setBorder(javax.swing.BorderFactory.createTitledBorder("Bookmarks"));
+        borderPanel.setLayout(new java.awt.GridBagLayout());
+
+        bookmarkDialogPanel.setLayout(new java.awt.BorderLayout());
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 1;
+        gridBagConstraints.gridy = 10;
+        gridBagConstraints.fill = java.awt.GridBagConstraints.BOTH;
+        gridBagConstraints.weightx = 1.0;
+        gridBagConstraints.weighty = 1.0;
+        borderPanel.add(bookmarkDialogPanel, gridBagConstraints);
+
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 1;
+        gridBagConstraints.gridy = 10;
+        gridBagConstraints.gridwidth = 3;
+        gridBagConstraints.fill = java.awt.GridBagConstraints.BOTH;
+        gridBagConstraints.weightx = 1.0;
+        gridBagConstraints.weighty = 1.0;
+        bookmarkPanel.add(borderPanel, gridBagConstraints);
+
+        infoBarLabelBookmark.setText("info bar");
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 0;
+        gridBagConstraints.gridy = 1;
+        gridBagConstraints.gridwidth = 11;
+        gridBagConstraints.fill = java.awt.GridBagConstraints.BOTH;
+        bookmarkPanel.add(infoBarLabelBookmark, gridBagConstraints);
+
+        bmCancelButton.setText(" Cancel ");
+        bmCancelButton.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                bmCancelButtonActionPerformed(evt);
+            }
+        });
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 3;
+        gridBagConstraints.gridy = 20;
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.NORTHEAST;
+        gridBagConstraints.insets = new java.awt.Insets(4, 0, 0, 4);
+        bookmarkPanel.add(bmCancelButton, gridBagConstraints);
+
+        bmOkButton.setText(" OK ");
+        bmOkButton.setEnabled(false);
+        bmOkButton.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                bmOkButtonActionPerformed(evt);
+            }
+        });
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 2;
+        gridBagConstraints.gridy = 20;
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.NORTHEAST;
+        gridBagConstraints.insets = new java.awt.Insets(4, 4, 0, 2);
+        bookmarkPanel.add(bmOkButton, gridBagConstraints);
+
+        restoreLastSessionButton2.setText("Restore last Session");
+        restoreLastSessionButton2.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                restoreLastSessionButton2ActionPerformed(evt);
+            }
+        });
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 1;
+        gridBagConstraints.gridy = 20;
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.NORTHEAST;
+        gridBagConstraints.weightx = 1.0;
+        gridBagConstraints.insets = new java.awt.Insets(4, 2, 0, 16);
+        bookmarkPanel.add(restoreLastSessionButton2, gridBagConstraints);
+
+        jTabbedPane1.addTab("Bookmark", bookmarkPanel);
+
+        recentlyUsedBookmarkPanel.setLayout(new java.awt.GridBagLayout());
+
+        borderPanel1.setBorder(javax.swing.BorderFactory.createTitledBorder("Bookmarks"));
+        borderPanel1.setLayout(new java.awt.GridBagLayout());
+
+        bookmarkRecUsedDialogPanel.setLayout(new java.awt.BorderLayout());
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 1;
+        gridBagConstraints.gridy = 10;
+        gridBagConstraints.fill = java.awt.GridBagConstraints.BOTH;
+        gridBagConstraints.weightx = 1.0;
+        gridBagConstraints.weighty = 1.0;
+        borderPanel1.add(bookmarkRecUsedDialogPanel, gridBagConstraints);
+
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 0;
+        gridBagConstraints.gridy = 10;
+        gridBagConstraints.gridwidth = 3;
+        gridBagConstraints.fill = java.awt.GridBagConstraints.BOTH;
+        gridBagConstraints.weightx = 1.0;
+        gridBagConstraints.weighty = 1.0;
+        recentlyUsedBookmarkPanel.add(borderPanel1, gridBagConstraints);
+
+        infoBarLabeRecUsedlBookmark.setText("info bar");
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 0;
+        gridBagConstraints.gridy = 1;
+        gridBagConstraints.gridwidth = 11;
+        gridBagConstraints.fill = java.awt.GridBagConstraints.BOTH;
+        recentlyUsedBookmarkPanel.add(infoBarLabeRecUsedlBookmark, gridBagConstraints);
+
+        bmRecUsedCancelButton.setText(" Cancel ");
+        bmRecUsedCancelButton.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                bmRecUsedCancelButtonActionPerformed(evt);
+            }
+        });
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 2;
+        gridBagConstraints.gridy = 20;
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.NORTHEAST;
+        gridBagConstraints.insets = new java.awt.Insets(4, 0, 0, 4);
+        recentlyUsedBookmarkPanel.add(bmRecUsedCancelButton, gridBagConstraints);
+
+        bmRecUsedOkButton.setText(" OK ");
+        bmRecUsedOkButton.setEnabled(false);
+        bmRecUsedOkButton.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                bmRecUsedOkButtonActionPerformed(evt);
+            }
+        });
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 1;
+        gridBagConstraints.gridy = 20;
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.NORTHEAST;
+        gridBagConstraints.insets = new java.awt.Insets(4, 4, 0, 2);
+        recentlyUsedBookmarkPanel.add(bmRecUsedOkButton, gridBagConstraints);
+
+        restoreLastSessionButton3.setText("Restore last Session");
+        restoreLastSessionButton3.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                restoreLastSessionButton3ActionPerformed(evt);
+            }
+        });
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 0;
+        gridBagConstraints.gridy = 20;
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.NORTHEAST;
+        gridBagConstraints.weightx = 1.0;
+        gridBagConstraints.insets = new java.awt.Insets(4, 2, 0, 16);
+        recentlyUsedBookmarkPanel.add(restoreLastSessionButton3, gridBagConstraints);
+
+        jTabbedPane1.addTab("Recently used Bookmark", recentlyUsedBookmarkPanel);
+
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 1;
         gridBagConstraints.gridy = 1;
         gridBagConstraints.fill = java.awt.GridBagConstraints.BOTH;
         gridBagConstraints.weightx = 1.0;
         gridBagConstraints.weighty = 1.0;
+        gridBagConstraints.insets = new java.awt.Insets(0, 0, 2, 0);
         getContentPane().add(jTabbedPane1, gridBagConstraints);
 
         pack();
@@ -1025,7 +1624,7 @@ public abstract class DataModelManagerDialog extends javax.swing.JFrame {
     private void loadExtractionModelButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_loadExtractionModelButtonActionPerformed
 		try {
 			String modelFile = UIUtil.choseFile(null, "extractionmodel", "Load Extraction Model", ".jm", this, false, true, false);
-			if (modelFile != null) {
+			if (modelFile != null && UIUtil.checkFileExistsAndWarn(modelFile, this)) {
 				UIUtil.setWaitCursor(this);
 				onLoadExtractionmodel(modelFile, executionContext);
 				setVisible(false);
@@ -1048,6 +1647,7 @@ public abstract class DataModelManagerDialog extends javax.swing.JFrame {
 					try {
 						UIUtil.setWaitCursor(DataModelManagerDialog.this);
 						onLoadExtractionmodel(file.getPath(), executionContext);
+						UISettings.store(tabPropertyName, jTabbedPane1.getSelectedIndex());
 						setVisible(false);
 						dispose();
 					} catch (Throwable t) {
@@ -1064,6 +1664,32 @@ public abstract class DataModelManagerDialog extends javax.swing.JFrame {
     private void jmCancelButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jmCancelButtonActionPerformed
 		close();
     }//GEN-LAST:event_jmCancelButtonActionPerformed
+
+    private void bmCancelButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_bmCancelButtonActionPerformed
+		close();
+    }//GEN-LAST:event_bmCancelButtonActionPerformed
+
+    private void bmOkButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_bmOkButtonActionPerformed
+    }//GEN-LAST:event_bmOkButtonActionPerformed
+
+    private void bmRecUsedCancelButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_bmRecUsedCancelButtonActionPerformed
+        close();
+    }//GEN-LAST:event_bmRecUsedCancelButtonActionPerformed
+
+    private void bmRecUsedOkButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_bmRecUsedOkButtonActionPerformed
+    }//GEN-LAST:event_bmRecUsedOkButtonActionPerformed
+
+    private void restoreLastSessionButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_restoreLastSessionButtonActionPerformed
+    }//GEN-LAST:event_restoreLastSessionButtonActionPerformed
+
+    private void restoreLastSessionButton1ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_restoreLastSessionButton1ActionPerformed
+    }//GEN-LAST:event_restoreLastSessionButton1ActionPerformed
+
+    private void restoreLastSessionButton2ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_restoreLastSessionButton2ActionPerformed
+    }//GEN-LAST:event_restoreLastSessionButton2ActionPerformed
+
+    private void restoreLastSessionButton3ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_restoreLastSessionButton3ActionPerformed
+    }//GEN-LAST:event_restoreLastSessionButton3ActionPerformed
 
 	/**
 	 * Opens file chooser.
@@ -1091,7 +1717,18 @@ public abstract class DataModelManagerDialog extends javax.swing.JFrame {
 		}
 	}
 
-	private void okButtonActionPerformed(java.awt.event.ActionEvent evt) {                                          
+	public void start() {
+		String datamodelFolder = CommandLineInstance.getInstance().datamodelFolder;
+		if (datamodelFolder != null && CommandLineInstance.getInstance().arguments.isEmpty()) {
+			executionContext.setDatamodelFolder(new File(datamodelFolder).getParent());
+			executionContext.setCurrentModelSubfolder(new File(datamodelFolder).getName());
+			onSelect(dbConnectionDialog, executionContext);
+		} else {
+			setVisible(true);
+		}
+	}
+
+	private void okButtonActionPerformed(java.awt.event.ActionEvent evt) {
 		if (currentModel == null) {
 			return;
 		}
@@ -1103,6 +1740,7 @@ public abstract class DataModelManagerDialog extends javax.swing.JFrame {
 		try {
 			store();
 			onSelect(null, executionContext);
+			UISettings.store(tabPropertyName, jTabbedPane1.getSelectedIndex());
 		} catch (Throwable t) {
 			UIUtil.showException(this, "Error", t);
 		} finally {
@@ -1115,15 +1753,79 @@ public abstract class DataModelManagerDialog extends javax.swing.JFrame {
 	protected abstract void onSelect(DbConnectionDialog dbConnectionDialog, ExecutionContext executionContext);
 	protected abstract void onLoadExtractionmodel(String modelFile, ExecutionContext executionContext2);
 
+    private void openBookmark(BookmarkId bookmark, ConnectionInfo ci) {
+		DataModelManager.setCurrentModelSubfolder(bookmark.datamodelFolder, executionContext);
+		UIUtil.setWaitCursor(DataModelManagerDialog.this);
+		String oldBookmark = CommandLineInstance.getInstance().bookmark;
+		String oldRawSchemaMapping = CommandLineInstance.getInstance().rawschemamapping;
+		String driver = CommandLineInstance.getInstance().driver;
+		String jdbcjar = CommandLineInstance.getInstance().jdbcjar;
+		String jdbcjar2 = CommandLineInstance.getInstance().jdbcjar2;
+		String jdbcjar3 = CommandLineInstance.getInstance().jdbcjar3;
+		String jdbcjar4 = CommandLineInstance.getInstance().jdbcjar4;
+		String password = CommandLineInstance.getInstance().password;
+		String url = CommandLineInstance.getInstance().url;
+		String user = CommandLineInstance.getInstance().user;
+		try {
+			CommandLineInstance.getInstance().bookmark = bookmark.bookmark;
+			CommandLineInstance.getInstance().rawschemamapping = bookmark.rawSchemaMapping;
+			if (ci != null) {
+				CommandLineInstance.getInstance().alias = ci.alias;
+				CommandLineInstance.getInstance().driver = ci.driverClass;
+				CommandLineInstance.getInstance().jdbcjar = ci.jar1;
+				CommandLineInstance.getInstance().jdbcjar2 = ci.jar2;
+				CommandLineInstance.getInstance().jdbcjar3 = ci.jar3;
+				CommandLineInstance.getInstance().jdbcjar4 = ci.jar4;
+				CommandLineInstance.getInstance().password = ci.password;
+				CommandLineInstance.getInstance().url = ci.url;
+				CommandLineInstance.getInstance().user = ci.user;
+			}
+			store();
+			onSelect(null, executionContext);
+			UISettings.store(tabPropertyName, jTabbedPane1.getSelectedIndex());
+			if (ci != null) {
+				UISettings.addRecentConnectionAliases(ci.alias);
+			}
+			if ("B".equals(module)) {
+				UISettings.addRecentBookmarks(bookmark);
+			}
+		} catch (Throwable t) {
+			CommandLineInstance.getInstance().bookmark = oldBookmark;
+			CommandLineInstance.getInstance().rawschemamapping = oldRawSchemaMapping;
+			CommandLineInstance.getInstance().driver = driver;
+			CommandLineInstance.getInstance().jdbcjar = jdbcjar;
+			CommandLineInstance.getInstance().jdbcjar2 = jdbcjar2;
+			CommandLineInstance.getInstance().jdbcjar3 = jdbcjar3;
+			CommandLineInstance.getInstance().jdbcjar4 = jdbcjar4;
+			CommandLineInstance.getInstance().password = password;
+			CommandLineInstance.getInstance().url = url;
+			CommandLineInstance.getInstance().user = user;
+			UIUtil.showException(DataModelManagerDialog.this, "Error", t);
+		} finally {
+			UIUtil.resetWaitCursor(DataModelManagerDialog.this);
+		}
+	}
+
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.JButton analyzeButton;
+    private javax.swing.JButton bmCancelButton;
+    private javax.swing.JButton bmOkButton;
+    private javax.swing.JButton bmRecUsedCancelButton;
+    private javax.swing.JButton bmRecUsedOkButton;
+    private javax.swing.JPanel bookmarkDialogPanel;
+    private javax.swing.JPanel bookmarkPanel;
+    private javax.swing.JPanel bookmarkRecUsedDialogPanel;
+    private javax.swing.JPanel borderPanel;
+    private javax.swing.JPanel borderPanel1;
     private javax.swing.JButton browseButton;
     private javax.swing.JPanel connectionDialogPanel;
     private javax.swing.JTable dataModelsTable;
     private javax.swing.JButton deleteButton;
     private javax.swing.JButton editButton;
+    private javax.swing.JLabel infoBarLabeRecUsedlBookmark;
     private javax.swing.JLabel infoBarLabel;
     private javax.swing.JLabel infoBarLabel2;
+    private javax.swing.JLabel infoBarLabelBookmark;
     private javax.swing.JButton jButton2;
     private javax.swing.JLabel jLabel2;
     private javax.swing.JPanel jPanel1;
@@ -1131,6 +1833,8 @@ public abstract class DataModelManagerDialog extends javax.swing.JFrame {
     private javax.swing.JPanel jPanel3;
     private javax.swing.JPanel jPanel4;
     private javax.swing.JPanel jPanel5;
+    private javax.swing.JPanel jPanel6;
+    private javax.swing.JPanel jPanel7;
     private javax.swing.JScrollPane jScrollPane2;
     private javax.swing.JScrollPane jScrollPane3;
     private javax.swing.JSeparator jSeparator1;
@@ -1143,8 +1847,15 @@ public abstract class DataModelManagerDialog extends javax.swing.JFrame {
     private javax.swing.JComboBox locationComboBox;
     private javax.swing.JButton newButton;
     private javax.swing.JButton okButton;
+    private javax.swing.JPanel recUsedConnectionDialogPanel;
+    private javax.swing.JPanel recUsedConnectionPanel;
+    private javax.swing.JPanel recentlyUsedBookmarkPanel;
+    private javax.swing.JButton restoreLastSessionButton;
+    private javax.swing.JButton restoreLastSessionButton1;
+    private javax.swing.JButton restoreLastSessionButton2;
+    private javax.swing.JButton restoreLastSessionButton3;
     // End of variables declaration//GEN-END:variables
-
+    
 	private static final long serialVersionUID = -3983034803834547687L;
-
+	
 }

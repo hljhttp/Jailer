@@ -30,14 +30,11 @@ import java.awt.event.WindowFocusListener;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import javax.swing.AbstractAction;
 import javax.swing.Action;
 import javax.swing.ActionMap;
-import javax.swing.Icon;
-import javax.swing.ImageIcon;
 import javax.swing.InputMap;
 import javax.swing.JLabel;
 import javax.swing.JMenuItem;
@@ -54,7 +51,6 @@ import org.fife.rsta.ui.EscapableDialog;
 import net.sf.jailer.datamodel.Column;
 import net.sf.jailer.datamodel.DataModel;
 import net.sf.jailer.datamodel.Table;
-import net.sf.jailer.ui.ParameterSelector;
 import net.sf.jailer.ui.UIUtil;
 import net.sf.jailer.ui.scrollmenu.JScrollPopupMenu;
 import net.sf.jailer.ui.syntaxtextarea.BasicFormatterImpl;
@@ -74,7 +70,6 @@ public abstract class DBConditionEditor extends EscapableDialog {
 
 	private boolean ok;
 	private boolean escaped;
-	private ParameterSelector parameterSelector;
 	private DataModelBasedSQLCompletionProvider provider;
 
 	/** Creates new form ConditionEditor */
@@ -109,7 +104,7 @@ public abstract class DBConditionEditor extends EscapableDialog {
 				if (ok && initialCondition.equals(editorPane.getText())) {
 					ok = false;
 				}
-				consume(ok? removeSingleLineComments(editorPane.getText()).replaceAll("\\n(\\r?) *", " ").replace('\n', ' ').replace('\r', ' ') : null);
+				consume(ok? UIUtil.toSingleLineSQL(editorPane.getText()) : null);
 			}
 		});
 		
@@ -118,6 +113,10 @@ public abstract class DBConditionEditor extends EscapableDialog {
 			protected void runBlock() {
 				super.runBlock();
 				okButtonActionPerformed(null);
+			}
+			@Override
+			protected boolean withFindAndReplace() {
+				return false;
 			}
 		};
 		JScrollPane jScrollPane2 = new JScrollPane();
@@ -146,25 +145,7 @@ public abstract class DBConditionEditor extends EscapableDialog {
 		}
 		
 		setLocation(400, 150);
-		setSize(440, 120);
-		
-		table1dropDown.setText(null);
-		table1dropDown.setIcon(dropDownIcon);
-		table1dropDown.addMouseListener(new java.awt.event.MouseAdapter() {
-			@Override
-			public void mousePressed(java.awt.event.MouseEvent evt) {
-				openColumnDropDownBox(table1dropDown, table1alias, table1);
-			}
-			
-			@Override
-			public void mouseEntered(java.awt.event.MouseEvent evt) {
-				table1dropDown.setEnabled(false);
-			}
-			@Override
-			public void mouseExited(java.awt.event.MouseEvent evt) {
-				table1dropDown.setEnabled(true);
-		   }
-		});
+		setSize(400, 140);
 	}
 
 	@Override
@@ -225,8 +206,6 @@ public abstract class DBConditionEditor extends EscapableDialog {
         jPanel4 = new javax.swing.JPanel();
         jPanel1 = new javax.swing.JPanel();
         jPanel2 = new javax.swing.JPanel();
-        table1name = new javax.swing.JLabel();
-        table1dropDown = new javax.swing.JLabel();
         toSubQueryButton = new javax.swing.JButton();
         okButton = new javax.swing.JButton();
         cancelButton = new javax.swing.JButton();
@@ -243,23 +222,6 @@ public abstract class DBConditionEditor extends EscapableDialog {
 
         jPanel2.setLayout(new java.awt.GridBagLayout());
 
-        table1name.setFont(table1name.getFont().deriveFont(table1name.getFont().getSize()+1f));
-        table1name.setText("jLabel1");
-        gridBagConstraints = new java.awt.GridBagConstraints();
-        gridBagConstraints.gridx = 4;
-        gridBagConstraints.gridy = 1;
-        gridBagConstraints.anchor = java.awt.GridBagConstraints.WEST;
-        gridBagConstraints.insets = new java.awt.Insets(0, 0, 0, 8);
-        jPanel2.add(table1name, gridBagConstraints);
-
-        table1dropDown.setFont(table1dropDown.getFont().deriveFont(table1dropDown.getFont().getSize()+1f));
-        table1dropDown.setText("jLabel1");
-        gridBagConstraints = new java.awt.GridBagConstraints();
-        gridBagConstraints.gridx = 3;
-        gridBagConstraints.gridy = 1;
-        gridBagConstraints.anchor = java.awt.GridBagConstraints.WEST;
-        jPanel2.add(table1dropDown, gridBagConstraints);
-
         toSubQueryButton.setText("to Subquery");
         toSubQueryButton.setToolTipText("<html>Converts condition into a subquery.<br> This allows to add joins with related tables or limiting clauses etc. </html>");
         toSubQueryButton.addActionListener(new java.awt.event.ActionListener() {
@@ -272,7 +234,6 @@ public abstract class DBConditionEditor extends EscapableDialog {
         gridBagConstraints.gridy = 1;
         gridBagConstraints.gridheight = 2;
         gridBagConstraints.anchor = java.awt.GridBagConstraints.WEST;
-        gridBagConstraints.insets = new java.awt.Insets(0, 8, 0, 12);
         jPanel2.add(toSubQueryButton, gridBagConstraints);
 
         okButton.setText("    Ok    ");
@@ -382,10 +343,10 @@ public abstract class DBConditionEditor extends EscapableDialog {
         	}
         	
         	if (table1.primaryKey.getColumns().size() == 1) {
-        		prefix.append(table1alias + "." + table1.primaryKey.getColumns().get(0).name + " in (\n    Select " + subAlias + "." + table1.primaryKey.getColumns().get(0).name + "\n    From " + table1.getName() + " " + subAlias + " \n    Where\n        ");
+        		prefix.append(table1alias + "." + table1.primaryKey.getColumns().get(0).name + " in (\n    Select " + subAlias + "." + table1.primaryKey.getColumns().get(0).name + " From " + table1.getName() + " " + subAlias + " \n    Where\n        ");
         		suffix.append("\n)");
         	} else {
-        		prefix.append("exists(\n    Select 1\n    From " + table1.getName() + " " + subAlias + " \n    Where (\n        ");
+        		prefix.append("exists(\n    Select * From " + table1.getName() + " " + subAlias + " \n    Where (\n        ");
         		suffix.append("\n        ) and " + pkCond + ")");
         	}
         	editorPane.beginAtomicEdit();
@@ -414,7 +375,7 @@ public abstract class DBConditionEditor extends EscapableDialog {
 	 * @return new condition or <code>null</code>, if user canceled the editor
 	 */
 	public void edit(String condition, String table1label, String table1alias, Table table1, String table2label, String table2alias, Table table2, boolean addPseudoColumns, boolean addConvertSubqueryButton) {
-		if (Pattern.compile("\\bselect\\b", Pattern.CASE_INSENSITIVE|Pattern.DOTALL).matcher(condition).find()) {
+		if (Pattern.compile("(\\bselect\\b)|(^\\s*\\()", Pattern.CASE_INSENSITIVE|Pattern.DOTALL).matcher(condition).find()) {
 			condition = new BasicFormatterImpl().format(condition);
 		}
 		this.table1 = table1;
@@ -422,14 +383,7 @@ public abstract class DBConditionEditor extends EscapableDialog {
 		this.table1alias = table1alias;
 		this.table2alias = table2alias;
 		this.addPseudoColumns = addPseudoColumns;
-		if (table1 != null) {
-			this.table1name.setText("  " + table1.getName());
-			this.table1name.setVisible(true);
-			this.table1dropDown.setVisible(true);
-		} else {
-			this.table1name.setVisible(false);
-			this.table1dropDown.setVisible(false);
-		}
+
 		toSubQueryButton.setVisible(addConvertSubqueryButton);
 		toSubQueryButton.setEnabled(true);
 		if (table1 != null && (table1.primaryKey == null || table1.primaryKey.getColumns() == null|| table1.primaryKey.getColumns().isEmpty())) {
@@ -444,9 +398,8 @@ public abstract class DBConditionEditor extends EscapableDialog {
 		editorPane.setCaretPosition(0);
 		editorPane.discardAllEdits();
 
-		if (parameterSelector != null) {
-			parameterSelector.updateParameters();
-		}
+		editorPane.setAnimateBracketMatching(false);
+		
 		if (provider != null) {
 			provider.removeAliases();
 			if (table1 != null) {
@@ -466,47 +419,7 @@ public abstract class DBConditionEditor extends EscapableDialog {
 		setVisible(true);
 	}
 
-	/**
-	 * Removes single line comments.
-	 * 
-	 * @param statement
-	 *            the statement
-	 * 
-	 * @return statement the statement without comments and literals
-	 */
-	private String removeSingleLineComments(String statement) {
-		Pattern pattern = Pattern.compile("('(?:[^']*'))|(/\\*.*?\\*/)|(\\-\\-.*?(?=\n|$))", Pattern.DOTALL);
-		Matcher matcher = pattern.matcher(statement);
-		boolean result = matcher.find();
-		StringBuffer sb = new StringBuffer();
-		if (result) {
-			do {
-				if (matcher.group(3) == null) {
-					matcher.appendReplacement(sb, "$0");
-					result = matcher.find();
-					continue;
-				}
-				int l = matcher.group(0).length();
-				matcher.appendReplacement(sb, "");
-				if (matcher.group(1) != null) {
-					l -= 2;
-					sb.append("'");
-				}
-				while (l > 0) {
-					--l;
-					sb.append(' ');
-				}
-				if (matcher.group(1) != null) {
-					sb.append("'");
-				}
-				result = matcher.find();
-			} while (result);
-		}
-		matcher.appendTail(sb);
-		return sb.toString();
-	}
-
-	public void setLocationAndFit(Point pos) {
+	public void setLocationAndFit(Point pos, int maxXW) {
 		setLocation(pos);
 		UIUtil.fit(this);
         try {
@@ -516,6 +429,8 @@ public abstract class DBConditionEditor extends EscapableDialog {
             if (hd > 0) {
                 setLocation(getX(), Math.max(getY() - hd, 0));
             }
+            int maxX = maxXW - getWidth();
+    		setLocation(Math.max(0, Math.min(maxX, getX())), getY());
         } catch (Throwable t) {
             // ignore
         }
@@ -530,23 +445,9 @@ public abstract class DBConditionEditor extends EscapableDialog {
     private javax.swing.JPanel jPanel3;
     private javax.swing.JPanel jPanel4;
     private javax.swing.JButton okButton;
-    protected javax.swing.JLabel table1dropDown;
-    protected javax.swing.JLabel table1name;
     private javax.swing.JButton toSubQueryButton;
     // End of variables declaration//GEN-END:variables
-	
-	private Icon dropDownIcon;
-	{
-		String dir = "/net/sf/jailer/ui/resource";
-		
-		// load images
-		try {
-			dropDownIcon = new ImageIcon(getClass().getResource(dir + "/dropdown.png"));
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-	}
-	
+
 	public final RSyntaxTextAreaWithSQLSyntaxStyle editorPane;
 	private SQLAutoCompletion sqlAutoCompletion;
 

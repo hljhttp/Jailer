@@ -15,7 +15,6 @@
  */
 package net.sf.jailer.ui;
 
-import java.awt.Desktop;
 import java.awt.GridBagConstraints;
 import java.awt.Window;
 import java.awt.event.ActionEvent;
@@ -356,8 +355,8 @@ public class SqlErrorDialog extends javax.swing.JDialog {
 					+ "&uuid=" + URLEncoder.encode(String.valueOf(UISettings.restore("uuid")), "UTF-8")
 					+ "&ts=" + URLEncoder.encode(new Date().toString(), "UTF-8")
 					+ "&jversion=" + URLEncoder.encode(System.getProperty("java.version") + "/" + System.getProperty("java.vm.vendor") + "/" + System.getProperty("java.vm.name") + "/" + System.getProperty("os.name"), "UTF-8") + "/(" + Environment.state + ")");
-			Desktop.getDesktop().browse(url);
-		} catch (Exception e) {
+			BrowserLauncher.openURL(url, this);
+		} catch (Throwable e) {
 			// ignore
 		}
 	}// GEN-LAST:event_sendButtonActionPerformed

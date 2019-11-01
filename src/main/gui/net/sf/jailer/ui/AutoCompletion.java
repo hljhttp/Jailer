@@ -10,6 +10,7 @@ import java.awt.event.KeyEvent;
 import java.awt.event.KeyListener;
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
+import java.util.Locale;
 
 import javax.swing.ComboBoxEditor;
 import javax.swing.ComboBoxModel;
@@ -170,7 +171,11 @@ public class AutoCompletion extends PlainDocument {
 		}
 		setText(item.toString());
 		// select the completed part
-		highlightCompletedText(offs + str.length());
+		try {
+			highlightCompletedText(offs + str.length());
+		} catch (Exception e) {
+			// ignore
+		}
 	}
 
 	private void setText(String text) {
@@ -216,6 +221,6 @@ public class AutoCompletion extends PlainDocument {
 
 	// checks if str1 starts with str2 - ignores case
 	private boolean startsWithIgnoreCase(String str1, String str2) {
-		return str1.toUpperCase().startsWith(str2.toUpperCase());
+		return str1.toUpperCase(Locale.ENGLISH).startsWith(str2.toUpperCase(Locale.ENGLISH));
 	}
 }

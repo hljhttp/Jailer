@@ -44,11 +44,11 @@ public class SQLDMLBuilder {
 	 * @param session current DB session
 	 * @return update statements for rows
 	 */
-	public static String buildUpdate(Table table, List<Row> rows, Session session) {
+	public static String buildUpdate(Table table, List<Row> rows, boolean withComments, Session session) {
 		StringBuilder sb = new StringBuilder();
 		
 		for (Row row: unique(rows)) {
-			sb.append(buildUpdate(table, row, false, session)).append(";" + LF + LF);
+			sb.append(buildUpdate(table, row, withComments, session)).append(";" + LF + LF);
 		}
 		return sb.toString();
 	}
@@ -78,7 +78,7 @@ public class SQLDMLBuilder {
 	public static String buildUpdate(Table table, Row row, boolean withComments, int columnToUpdate, Session session) {
 		Quoting quoting;
 		try {
-			quoting = new Quoting(session);
+			quoting = Quoting.getQuoting(session);
 		} catch (SQLException e) {
 			throw new RuntimeException(e);
 		}
@@ -142,11 +142,11 @@ public class SQLDMLBuilder {
 	 * @param session current DB session
 	 * @return insert statements for rows
 	 */
-	public static String buildInsert(Table table, List<Row> rows, Session session) {
+	public static String buildInsert(Table table, List<Row> rows, boolean withComments, Session session) {
 		StringBuilder sb = new StringBuilder();
 		
 		for (Row row: unique(rows)) {
-			sb.append(buildInsert(table, row, false, session)).append(";" + LF + LF);
+			sb.append(buildInsert(table, row, withComments, session)).append(";" + LF + LF);
 		}
 		return sb.toString();
 	}
@@ -162,7 +162,7 @@ public class SQLDMLBuilder {
 	public static String buildInsert(Table table, Row row, boolean withComments, Session session) {
 		Quoting quoting;
 		try {
-			quoting = new Quoting(session);
+			quoting = Quoting.getQuoting(session);
 		} catch (SQLException e) {
 			throw new RuntimeException(e);
 		}
@@ -214,11 +214,11 @@ public class SQLDMLBuilder {
 	 * @param session current DB session
 	 * @return delete statements for rows
 	 */
-	public static String buildDelete(Table table, List<Row> rows, Session session) {
+	public static String buildDelete(Table table, List<Row> rows, boolean withComments, Session session) {
 		StringBuilder sb = new StringBuilder();
 		
 		for (Row row: unique(rows)) {
-			sb.append(buildDelete(table, row, false, session)).append(";" + LF + "");
+			sb.append(buildDelete(table, row, withComments, session)).append(";" + LF + "");
 		}
 		return sb.toString();
 	}

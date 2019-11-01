@@ -68,9 +68,8 @@ public class ResultSetRenderer extends javax.swing.JPanel {
         	titelLabel.setToolTipText(null);
         }
         
-		final BrowserContentPane rb = new ResultContentPane(datamodel, null, "", session, null, null,
+		final BrowserContentPane rb = new ResultContentPane(datamodel, null, "", session, null,
                 null, null, new RowsClosure(), Integer.MAX_VALUE, false, false,
-                resultSet.getMetaData().getColumnCount() > 1? 180 : 400,
                 executionContext);
 		if (resultSet instanceof MemorizedResultSet && ((MemorizedResultSet) resultSet).getSize() > 1) {
 			rb.setTableFilterEnabled(true);
@@ -135,17 +134,16 @@ public class ResultSetRenderer extends javax.swing.JPanel {
     // End of variables declaration//GEN-END:variables
     class ResultContentPane extends BrowserContentPane {
     	private final Integer limit;
-    	public ResultContentPane(DataModel dataModel, Table table, String condition, Session session, Row parentRow,
+    	public ResultContentPane(DataModel dataModel, Table table, String condition, Session session,
                 List<Row> parentRows, Association association, Frame parentFrame,
                 RowsClosure rowsClosure, Integer limit, Boolean selectDistinct,
-                boolean reload, int maxColumnWidth, ExecutionContext executionContext) {
-            super(dataModel, table, condition, session, parentRow, parentRows, association, parentFrame, 
+                boolean reload, ExecutionContext executionContext) {
+            super(dataModel, table, condition, session, parentRows, association, parentFrame, 
             		rowsClosure, selectDistinct, reload, executionContext);
             singleRowDetailsViewTitel = "Details";
-            this.maxColumnWidth = maxColumnWidth;
             this.limit = limit;
             rowsTableScrollPane.setWheelScrollingEnabled(true);
-            rowsCount.setVisible(false);
+            statusPanel.setVisible(false);
     	}
         @Override
         protected int getReloadLimit() {
@@ -180,7 +178,7 @@ public class ResultSetRenderer extends javax.swing.JPanel {
         protected void onContentChange(List<Row> rows, boolean reloadChildren) {
         }
         @Override
-        protected RowBrowser navigateTo(Association association, int rowIndex, Row row) {
+        protected RowBrowser navigateTo(Association association, List<Row> pRows) {
         	return null;
         }
         @Override

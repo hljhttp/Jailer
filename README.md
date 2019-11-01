@@ -58,6 +58,17 @@ See also <a href="http://jailer.sourceforge.net/faq.html#multiuser">http://jaile
     - On windows platform execute "jailerDataBrowser.exe", or "jailerDataBrowser.bat"
     - On Unix/Linux platform execute the script "jailerDataBrowser.sh"
 
+## Building
+
+Clone the git repository:
+
+* `git clone https://github.com/Wisser/Jailer.git`
+
+To build the tool you can just use ant: ( https://ant.apache.org )
+
+* `cd Jailer`
+* `ant`
+
 ## Contact
  - Home:    http://jailer.sourceforge.net/ or https://github.com/Wisser/Jailer
  - Forum:   https://sourceforge.net/p/jailer/discussion/

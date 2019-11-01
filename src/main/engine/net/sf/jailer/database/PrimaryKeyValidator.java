@@ -17,17 +17,20 @@ package net.sf.jailer.database;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Types;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import net.sf.jailer.datamodel.Column;
 import net.sf.jailer.datamodel.Table;
 import net.sf.jailer.modelbuilder.JDBCMetaDataBasedModelElementFinder;
+import net.sf.jailer.util.CancellationException;
 import net.sf.jailer.util.CancellationHandler;
 import net.sf.jailer.util.JobManager;
+import net.sf.jailer.util.JobManager.Job;
 import net.sf.jailer.util.Quoting;
 
 /**
@@ -35,31 +38,37 @@ import net.sf.jailer.util.Quoting;
  * 
  * @author Ralf Wisser
  */
-public class PrimaryKeyValidator {
+public abstract class PrimaryKeyValidator {
 
-	private static final boolean FAIL_FAST = false;
+	private final Object cancellationContext;
 	
+	public PrimaryKeyValidator(Object cancellationContext) {
+		this.cancellationContext = cancellationContext;
+	}
+
 	/**
 	 * Validates all primary keys of a set of tables.
 	 * 
 	 * @param session the session
 	 * @param tables the tables
-	 * @param hasRowID 
 	 * @throws SQLException if a pk is invalid
 	 */
-	public void validatePrimaryKey(final Session session, Set<Table> tables, boolean hasRowID, JobManager jobManager) throws SQLException {
+	public void validatePrimaryKey(final Session session, Set<Table> tables, JobManager jobManager) throws SQLException {
+		numTotal.set(0);
+		numErrors.set(0);
+		numDone.set(0);
+		updateProgressBar();
+
 		String defaultSchema = JDBCMetaDataBasedModelElementFinder.getDefaultSchema(session, session.getSchema());
-		List<JobManager.Job> jobs = new ArrayList<JobManager.Job>();
+		List<JobManager.Job> jobsUDPK = new ArrayList<JobManager.Job>();
+		List<JobManager.Job> jobsRealPK = new ArrayList<JobManager.Job>();
 		for (final Table table: tables) {
-			CancellationHandler.checkForCancellation(null);
+			CancellationHandler.checkForCancellation(cancellationContext);
 			if (table.primaryKey == null || table.primaryKey.getColumns().isEmpty()) {
 				// nothing to check here
 				continue;
 			}
-			if (hasRowID && !Boolean.TRUE.equals(table.upsert) && !hasLOBColumns(table, defaultSchema, session)) {
-				// not necessary to check here
-				continue;
-			}
+			boolean realPK = false;
 			try {
 				ResultSet resultSet = JDBCMetaDataBasedModelElementFinder.getPrimaryKeys(
 						session,
@@ -79,52 +88,51 @@ public class PrimaryKeyValidator {
 				}
 				if (tabPkColumns.equals(pkColumns)) {
 					// real PK
-					continue;
+					realPK = true;
 				}
 			} catch (Exception e) {
 				// ignore
 			}
-			jobs.add(new JobManager.Job() {
-				@Override
-				public void run() throws SQLException {
-					checkUniqueness(session, table, new Quoting(session));
-					if (FAIL_FAST) {
-						throwIfErrorFound();
-					}
-				}
-			});
-			jobs.add(new JobManager.Job() {
-				@Override
-				public void run() throws SQLException {
-					checkNoNull(session, table, new Quoting(session));
-					if (FAIL_FAST) {
-						throwIfErrorFound();
-					}
-				}
-			});
-		}
-		jobManager.executeJobs(jobs);
-		CancellationHandler.checkForCancellation(null);
-		throwIfErrorFound();
-	}
 
-	private boolean hasLOBColumns(Table table, String defaultSchema, Session session) throws SQLException {
-		ResultSet resultSet = JDBCMetaDataBasedModelElementFinder.getColumns(
-				session,
-				session.getMetaData(),
-				Quoting.staticUnquote(table.getSchema(defaultSchema)),
-				Quoting.staticUnquote(table.getUnqualifiedName()),
-				"%", false, false, null);
-		boolean hasLOB = false;
-		while (resultSet.next()) {
-			int type = resultSet.getInt(5);
-			if (type == Types.BLOB || type == Types.CLOB || type == Types.NCLOB || type == Types.SQLXML) {
-				hasLOB = true;
-				break;
+			List<JobManager.Job> jobListToAddTo;
+			if (realPK) {
+				jobListToAddTo = jobsRealPK;
+			} else {
+				jobListToAddTo = jobsUDPK;
 			}
+
+			jobListToAddTo.add(new JobManager.Job() {
+				@Override
+				public void run() throws SQLException {
+					checkUniqueness(session, table, Quoting.getQuoting(session));
+					numDone.getAndIncrement();
+					updateProgressBar();
+				}
+			});
+			jobListToAddTo.add(new JobManager.Job() {
+				@Override
+				public void run() throws SQLException {
+					checkNoNull(session, table, Quoting.getQuoting(session));
+					numDone.getAndIncrement();
+					updateProgressBar();
+				}
+			});
 		}
-		resultSet.close();
-		return hasLOB;
+
+		Collection<Job> jobs = new ArrayList<JobManager.Job>();
+		jobs.addAll(jobsUDPK);
+		jobs.addAll(jobsRealPK);
+
+		numTotal.set(jobs.size());
+		updateProgressBar();
+
+		try {
+			jobManager.executeJobs(jobs);
+		} catch (CancellationException e) {
+			throwIfErrorFound();
+		}
+		throwIfErrorFound();
+		CancellationHandler.checkForCancellation(cancellationContext);
 	}
 
 	private void throwIfErrorFound() throws SqlException {
@@ -145,12 +153,16 @@ public class PrimaryKeyValidator {
 		}
 		final String sql = "Select 1 from " + quoting.requote(table.getName()) + " " +
 				"Group by " + pks + " having count(*) > 1";
-		session.executeQuery(sql, new Session.AbstractResultSetReader() {
-			@Override
-			public void readCurrentRow(ResultSet resultSet) throws SQLException {
-				addError("Primary key of table \"" + table.getName() + "\" is not unique.", sql.toString());
-			}
-		}, null, null, 1);
+		try {
+			session.executeQuery(sql, new Session.AbstractResultSetReader() {
+				@Override
+				public void readCurrentRow(ResultSet resultSet) throws SQLException {
+					addError("Primary key of table \"" + table.getName() + "\" is not unique.", sql.toString());
+				}
+			}, null, cancellationContext, 1);
+		} catch (SqlException e) {
+			addError("Table \"" + table.getName() + "\": " + e.message, sql.toString());
+		}
 	}
 
 	private void checkNoNull(Session session, final Table table, Quoting quoting) throws SQLException {
@@ -163,20 +175,32 @@ public class PrimaryKeyValidator {
 		}
 		final String sql = "Select 1 from " + quoting.requote(table.getName()) + " " +
 				"Where " + hasNull;
-		session.executeQuery(sql, new Session.AbstractResultSetReader() {
-			@Override
-			public void readCurrentRow(ResultSet resultSet) throws SQLException {
-				addError("Primary key of table \"" + table.getName() + "\" contains null.", sql.toString());
-			}
-		}, null, null, 1);
+		try {
+			session.executeQuery(sql, new Session.AbstractResultSetReader() {
+				@Override
+				public void readCurrentRow(ResultSet resultSet) throws SQLException {
+					addError("Primary key of table \"" + table.getName() + "\" contains null.", sql.toString());
+				}
+			}, null, cancellationContext, 1);
+		} catch (SqlException e) {
+			addError("Table \"" + table.getName() + "\": " + e.message, sql.toString());
+		}
 	}
 
 	private StringBuilder errorMessage = new StringBuilder();
 	private StringBuilder errorStatements = new StringBuilder();
 
+	protected AtomicInteger numErrors = new AtomicInteger();
+	protected AtomicInteger numDone = new AtomicInteger();
+	protected AtomicInteger numTotal = new AtomicInteger();
+	
+	protected abstract void updateProgressBar();
+	
 	private void addError(String message, String sql) {
 		errorMessage.append("- " + message + "\n");
 		errorStatements.append("- " + sql + "\n");
+		numErrors.getAndIncrement();
+		updateProgressBar();
 	}
 
 }

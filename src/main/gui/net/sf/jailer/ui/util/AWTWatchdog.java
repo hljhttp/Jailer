@@ -7,12 +7,14 @@ import java.lang.management.ManagementFactory;
 import java.lang.management.MonitorInfo;
 import java.lang.management.ThreadInfo;
 import java.lang.management.ThreadMXBean;
+import java.util.Locale;
 import java.util.regex.Pattern;
 
 import javax.swing.SwingUtilities;
 
 import net.sf.jailer.JailerVersion;
 import net.sf.jailer.database.Session;
+import net.sf.jailer.ui.Environment;
 import net.sf.jailer.ui.UIUtil;
 
 public class AWTWatchdog {
@@ -47,10 +49,10 @@ public class AWTWatchdog {
 							        PrintWriter pw = new PrintWriter(sw);
 							        t.printStackTrace(pw);
 							        dump = sw.toString();
-								}
+							        Session._log.error(dump);
+						        }
 								dump = JailerVersion.VERSION + " " + dump;
-								Session._log.error(dump);
-					            String iMsg = dump;
+								String iMsg = dump;
 								UIUtil.sendIssue("AWTHanging", iMsg);
 								issueSent = true;
 							}
@@ -85,7 +87,7 @@ public class AWTWatchdog {
 	protected static String sendThreadDump() {
 		ThreadMXBean threadMxBean = ManagementFactory.getThreadMXBean();
 		for (ThreadInfo ti : threadMxBean.dumpAllThreads(true, true)) {
-			if (ti.getThreadName() != null && ti.getThreadName().toLowerCase().startsWith("awt-event")) {
+			if (ti.getThreadName() != null && ti.getThreadName().toLowerCase(Locale.ENGLISH).startsWith("awt-event")) {
 
 				StringBuilder sb = new StringBuilder(
 						"\"" + ti.getThreadName() + "\"" + " Id=" + ti.getThreadId() + " " + ti.getThreadState());
@@ -109,7 +111,7 @@ public class AWTWatchdog {
 				for (; i < ti.getStackTrace().length; i++) {
 					StackTraceElement ste = ti.getStackTrace()[i];
 					
-					String s = ste.getClassName() + "." + ste.getMethodName() + "(" +
+					String s = (Environment.JEventQueue.class.getName().equals(ste.getClassName())? "JEventQueue" : ste.getClassName()) + "." + ste.getMethodName() + "(" +
 			             (ste.isNativeMethod() ? "Native Method)" :
 			              (ste.getFileName() != null &&ste.getLineNumber() >= 0 ?
 			            		  ste.getFileName() + ":" + ste.getLineNumber() + ")" :
@@ -161,6 +163,8 @@ public class AWTWatchdog {
 					}
 				}
 				sb.append('\n');
+
+				Session._log.error(sb);
 
 				String dump = Pattern.compile(mrk + "(?d)([^\\n]*\\n[^\\n]*\\n)(.*?)\\b" + pckPtrn, Pattern.DOTALL).matcher(sb.toString()).replaceFirst("..$1at " + pck);
 				dump = dump

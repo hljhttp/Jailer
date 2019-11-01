@@ -120,12 +120,20 @@ public class CellContentConverter {
 		}
 		if (content instanceof byte[]) {
 			byte[] data = (byte[]) content;
-			StringBuilder hex = new StringBuilder((data.length + 1) * 2);
+			String binaryPattern = targetConfiguration.getBinaryPattern();
+			int i = binaryPattern.indexOf("%s");
+			if (i < 0) {
+				return binaryPattern;
+			}
+			StringBuilder hex = new StringBuilder((data.length + 1) * 2 + binaryPattern.length());
+			hex.append(binaryPattern.substring(0, i));
 			for (byte b: data) {
 				hex.append(hexChar[(b >> 4) & 15]);
 				hex.append(hexChar[b & 15]);
 			}
-			return targetConfiguration.getBinaryPattern().replace("%s", hex);
+			data = null; // gc
+			hex.append(binaryPattern.substring(i + 2));
+			return hex.toString();
 		}
 		if (content instanceof Time) {
 			return "'" + content + "'";
@@ -364,7 +372,7 @@ public class CellContentConverter {
 				if (DBMS.MySQL.equals(configuration)) {
 					// YEAR
 					String typeName = resultSetMetaData.getColumnTypeName(i);
-					if (typeName != null && typeName.toUpperCase().equals("YEAR")) {
+					if (typeName != null && typeName.toUpperCase(Locale.ENGLISH).equals("YEAR")) {
 						int result = resultSet.getInt(i);
 						if (resultSet.wasNull()) {
 							return null;
@@ -379,6 +387,9 @@ public class CellContentConverter {
 			return resultSet.getString(i);
 		}
 		Object object = resultSet.getObject(i);
+		
+		// TODO mssql: if type is (VAR|LONGVAR)BINARY or (VAR|LONGVAR)(N)CHAR then use #get...Stream(), put data into a B|C|NCLOB implementation
+		
 		if (type == Types.NCHAR || type == Types.NVARCHAR || type == Types.LONGNVARCHAR) {
 			if (object instanceof String) {
 				object = new NCharWrapper((String) object);
@@ -387,9 +398,11 @@ public class CellContentConverter {
 		if (DBMS.POSTGRESQL.equals(configuration)) {
 			if (type == TYPE_POBJECT) {
 				return new PObjectWrapper(resultSet.getString(i), resultSetMetaData.getColumnTypeName(i));
+			} else if (object instanceof Double && Double.isNaN((double) object)) {
+				return "NaN";
 			} else if (object instanceof Boolean) {
 				String typeName = resultSetMetaData.getColumnTypeName(i);
-				if (typeName != null && typeName.toLowerCase().equals("bit")) {
+				if (typeName != null && typeName.toLowerCase(Locale.ENGLISH).equals("bit")) {
 					final String value = Boolean.TRUE.equals(object)? "B'1'" : "B'0'";
 					return new Object() {
 						@Override

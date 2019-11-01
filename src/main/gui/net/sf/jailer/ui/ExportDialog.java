@@ -31,6 +31,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
@@ -39,7 +40,6 @@ import java.util.TreeSet;
 import javax.swing.DefaultComboBoxModel;
 import javax.swing.DefaultListCellRenderer;
 import javax.swing.Icon;
-import javax.swing.ImageIcon;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JList;
@@ -72,6 +72,7 @@ import net.sf.jailer.util.Quoting;
  *
  * @author Ralf Wisser
  */
+@SuppressWarnings("serial")
 public abstract class ExportDialog extends javax.swing.JDialog {
 
 	/**
@@ -318,14 +319,16 @@ public abstract class ExportDialog extends javax.swing.JDialog {
 			}
 
 			theSettings = new Settings(Environment.newFile(".exportdata.ui").getPath(), fields);
-			
+
 			theSettings.restore(settingsContext, settingsContextSecondaryKey);
 			for (JTextField field: defaults.keySet()) {
 				if (field.getText().length() == 0) {
 					field.setText(defaults.get(field));
 				}
 			}
-			
+
+			insert.setText(UIUtil.correctFileSeparator(insert.getText()));
+
 			if (scriptFormat == ScriptFormat.INTRA_DATABASE && insert.getText().trim().length() == 0) {
 				insert.setText("receipt.txt");
 			}
@@ -412,7 +415,6 @@ public abstract class ExportDialog extends javax.swing.JDialog {
 			threads.getDocument().addDocumentListener(dl);
 			rowsPerThread.getDocument().addDocumentListener(dl);
 			upsertCheckbox.addActionListener(al);
-			checkPKs.addActionListener(al);
 			insertIncrementally.addActionListener(al);
 			independentWorkingTables.addActionListener(al);
 			transactional.addActionListener(al);
@@ -487,7 +489,7 @@ public abstract class ExportDialog extends javax.swing.JDialog {
 		}
 	}
 
-	@SuppressWarnings({ "unchecked", "serial" })
+	@SuppressWarnings({ "unchecked" })
 	private void initIsolationLevel(Session session) {
 		final Map<String, String> levels = new TreeMap<String, String>();
 		levels.put(String.valueOf(Connection.TRANSACTION_READ_COMMITTED), "Read committed");
@@ -524,7 +526,7 @@ public abstract class ExportDialog extends javax.swing.JDialog {
 		});
 	}
 
-	@SuppressWarnings({ "unchecked", "serial" })
+	@SuppressWarnings({ "unchecked" })
 	private void initTargetDBMS(Session session) {
 		if (scriptFormat == ScriptFormat.SQL) {
 			targetDBMSComboBox.setModel(new DefaultComboBoxModel<DBMS>(DBMS.values()));
@@ -629,7 +631,7 @@ public abstract class ExportDialog extends javax.swing.JDialog {
 		List<String> result = new ArrayList<String>();
 		Quoting quoting;
 		try {
-			quoting = new Quoting(session);
+			quoting = Quoting.getQuoting(session);
 		} catch (SQLException e) {
 			e.printStackTrace();
 			return;
@@ -664,7 +666,7 @@ public abstract class ExportDialog extends javax.swing.JDialog {
 		}
 		fillCLIArgs(args);
 		String cmd = "sh jailer.sh";
-		if (System.getProperty("os.name", "").toLowerCase().startsWith("windows")) {
+		if (System.getProperty("os.name", "").toLowerCase(Locale.ENGLISH).startsWith("windows")) {
 			cmd = "jailer.bat";
 		}
 		String cli = cmd + UIUtil.createCLIArgumentString(user, password, args, executionContext);
@@ -957,7 +959,6 @@ public abstract class ExportDialog extends javax.swing.JDialog {
         jLabel30 = new javax.swing.JLabel();
         browseInsertButton = new javax.swing.JButton();
         browseDeleteButton = new javax.swing.JButton();
-        checkPKs = new javax.swing.JCheckBox();
         insertIncrementally = new javax.swing.JCheckBox();
         targetDBMSLabel1 = new javax.swing.JLabel();
         jPanel3 = new javax.swing.JPanel();
@@ -1575,21 +1576,6 @@ public abstract class ExportDialog extends javax.swing.JDialog {
         gridBagConstraints.gridy = 34;
         jPanel1.add(browseDeleteButton, gridBagConstraints);
 
-        checkPKs.setText("check primary keys"); // NOI18N
-        checkPKs.setToolTipText("<html>Check the validity of the primary keys of all relevant tables. <br>Reports an error if a primary key is ambiguous or contains a null. </html>");
-        checkPKs.setBorder(javax.swing.BorderFactory.createEmptyBorder(0, 0, 0, 0));
-        checkPKs.addActionListener(new java.awt.event.ActionListener() {
-            public void actionPerformed(java.awt.event.ActionEvent evt) {
-                checkPKsActionPerformed(evt);
-            }
-        });
-        gridBagConstraints = new java.awt.GridBagConstraints();
-        gridBagConstraints.gridx = 1;
-        gridBagConstraints.gridy = 53;
-        gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
-        gridBagConstraints.insets = new java.awt.Insets(2, 0, 8, 0);
-        jPanel1.add(checkPKs, gridBagConstraints);
-
         insertIncrementally.setText("limit transaction size"); // NOI18N
         insertIncrementally.setToolTipText("<html>Collects the rows using multiple insert operations with a limited number of rows per operation.<br>Use this option if otherwise the transactions become too big.</html>");
         insertIncrementally.setBorder(javax.swing.BorderFactory.createEmptyBorder(0, 0, 0, 0));
@@ -1652,7 +1638,7 @@ public abstract class ExportDialog extends javax.swing.JDialog {
         gridBagConstraints.gridx = 1;
         gridBagConstraints.gridy = 52;
         gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
-        gridBagConstraints.insets = new java.awt.Insets(2, 0, 2, 0);
+        gridBagConstraints.insets = new java.awt.Insets(2, 0, 8, 0);
         jPanel1.add(transactional, gridBagConstraints);
 
         independentWorkingTables.setText("independent working tables"); // NOI18N
@@ -1968,9 +1954,6 @@ public abstract class ExportDialog extends javax.swing.JDialog {
 		}
 	}//GEN-LAST:event_browseDeleteButtonActionPerformed
 
-    private void checkPKsActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_checkPKsActionPerformed
-    }//GEN-LAST:event_checkPKsActionPerformed
-
     private void insertIncrementallyActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_insertIncrementallyActionPerformed
     }//GEN-LAST:event_insertIncrementallyActionPerformed
 
@@ -2019,9 +2002,6 @@ public abstract class ExportDialog extends javax.swing.JDialog {
 		if (delete.isVisible() && delete.getText().trim().length() > 0) {
 			args.add("-d");
 			args.add(toFileName(delete.getText().trim()));
-		}
-		if (checkPKs.isSelected()) {
-			args.add("-check-primary-keys");
 		}
 		if (insertIncrementally.isSelected()) {
 			args.add("-limit-transaction-size");
@@ -2259,7 +2239,6 @@ public abstract class ExportDialog extends javax.swing.JDialog {
     private javax.swing.JButton browseInsertButton;
     private javax.swing.ButtonGroup buttonGroup1;
     private javax.swing.JButton cancelButton;
-    public javax.swing.JCheckBox checkPKs;
     private javax.swing.JTextArea cliArea;
     public javax.swing.JPanel commandLinePanel;
     public javax.swing.JCheckBox confirmInsert;
@@ -2343,24 +2322,10 @@ public abstract class ExportDialog extends javax.swing.JDialog {
 	private Icon conditionEditorIcon;
 	private Icon conditionEditorSelectedIcon;
 	{
-		String dir = "/net/sf/jailer/ui/resource";
-		
 		// load images
-		try {
-			loadIcon = new ImageIcon(getClass().getResource(dir + "/load.png"));
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-		try {
-			conditionEditorIcon = new ImageIcon(getClass().getResource(dir + "/edit.png"));
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-		try {
-			conditionEditorSelectedIcon = new ImageIcon(getClass().getResource(dir + "/edit_s.png"));
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
+		loadIcon = UIUtil.readImage("/load.png");
+		conditionEditorIcon = UIUtil.readImage("/edit.png");
+		conditionEditorSelectedIcon = UIUtil.readImage("/edit_s.png");
 	}
 
 }

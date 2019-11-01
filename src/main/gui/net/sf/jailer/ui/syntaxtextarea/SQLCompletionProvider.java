@@ -102,7 +102,7 @@ public abstract class SQLCompletionProvider<SOURCE, SCHEMA, TABLE> extends Defau
      */
     public void reset(Session session, SOURCE metaDataSource) throws SQLException {
         this.metaDataSource = metaDataSource;
-        this.llQuoting = session == null? null : new Quoting(session);
+        this.llQuoting = session == null? null : Quoting.getQuoting(session);
     }
     
     /**
@@ -160,7 +160,7 @@ public abstract class SQLCompletionProvider<SOURCE, SCHEMA, TABLE> extends Defau
     private Quoting getQuoting() {
     	if (llQuoting == null) {
     		try {
-				llQuoting = session == null? null : new Quoting(session);
+				llQuoting = session == null? null : Quoting.getQuoting(session);
 			} catch (SQLException e) {
 				// ignore
 			}
@@ -355,7 +355,7 @@ public abstract class SQLCompletionProvider<SOURCE, SCHEMA, TABLE> extends Defau
                                 } else {
                                     color = Color.BLUE;
                                 }
-                                result.add(new SQLCompletion(SQLCompletionProvider.this, (endsWithOn? "" : "on ") + cond, (endsWithOn? "" : "on ") + cond + " ", a.getName(), color, cond));
+                                result.add(new SQLCompletion(SQLCompletionProvider.this, (endsWithOn? " " : "on ") + cond, (endsWithOn? "" : "on ") + cond + " ", a.getName(), color, cond));
                             }
                         }
                         if (!result.isEmpty()) {
@@ -878,7 +878,7 @@ public abstract class SQLCompletionProvider<SOURCE, SCHEMA, TABLE> extends Defau
         if (result) {
             do {
                 String clause = matcher.group(1);
-                String clauseLC = clause == null? null : clause.toLowerCase();
+                String clauseLC = clause == null? null : clause.toLowerCase(Locale.ENGLISH);
                 String keyword = matcher.group(2);
                 String identifier = matcher.group(3);
 
@@ -1062,7 +1062,7 @@ public abstract class SQLCompletionProvider<SOURCE, SCHEMA, TABLE> extends Defau
                                 TABLE mdTable = findTable(mdSchema, table);
                                 if (mdTable != null || "dual".equalsIgnoreCase(table) || ctes.contains(Quoting.normalizeIdentifier(table))) {
                                     if (outlineInfos != null) {
-                                        if (outlineInfos != null && (mdTable == null || mdTable instanceof MDTable)) {
+                                        if (mdTable == null || mdTable instanceof MDTable) {
                                             OutlineInfo info = new OutlineInfo((MDTable) mdTable, null, level, pos, mdTable == null? table : null);
                                             info.isCTE = mdTable == null;
 											outlineInfos.add(nextInsertPos >= 0? nextInsertPos : outlineInfos.size(), info);

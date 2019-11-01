@@ -136,7 +136,7 @@ public abstract class MetaDataDetailsPanel extends javax.swing.JPanel {
 						}
 					}
 				}
-			});
+			}, "Metadata-LoadDetails-" + (i + 1));
 	        thread.setDaemon(true);
 	        thread.start();
         }
@@ -243,13 +243,14 @@ public abstract class MetaDataDetailsPanel extends javax.swing.JPanel {
 	    	try {
 		    	final int tableNameColumnIndex = 3;
 		    	final Set<String> pkNames = Collections.synchronizedSet(new HashSet<String>());
-		    	final BrowserContentPane rb = new BrowserContentPane(datamodel.get(), null, "", session, null, null,
+		    	final BrowserContentPane rb = new BrowserContentPane(datamodel.get(), null, "", session, null,
 						null, null, new BrowserContentPane.RowsClosure(), false, false, executionContext) {
 		    		{
 		    			noSingleRowDetailsView = true;
 		    			rowsTableScrollPane.setWheelScrollingEnabled(true);
 		    			sortColumnsCheckBox.setVisible(false);
 		    			sortColumnsPanel.setVisible(false);
+		                statusPanel.setVisible(false);
 		    		}
 		    		@Override
 		    		protected int getReloadLimit() {
@@ -282,7 +283,7 @@ public abstract class MetaDataDetailsPanel extends javax.swing.JPanel {
 					protected void onContentChange(List<Row> rows, boolean reloadChildren) {
 					}
 					@Override
-					protected RowBrowser navigateTo(Association association, int rowIndex, Row row) {
+					protected RowBrowser navigateTo(Association association, List<Row> pRows) {
 						return null;
 					}
 					@Override
@@ -388,27 +389,29 @@ public abstract class MetaDataDetailsPanel extends javax.swing.JPanel {
 						} catch (SQLException e) {
 							// ignore
 						}
-			    		UIUtil.invokeLater(new Runnable() {
-							@Override
-							public void run() {
-								LoadJob loadJob = rb.newLoadJob(metaDataDetails[0], null);
-					    		loadJob.run();
-					        	JComponent rTabContainer = rb.getRowsTableContainer();
-						    	detailsViews.put(cacheKey, rTabContainer);
-								final JTable rTab = rb.getRowsTable();
-								UIUtil.invokeLater(new Runnable() {
-									@Override
-									public void run() {
-										mdd.adjustRowsTable(rTab);
-										panel.removeAll();
-							        	JComponent rTabContainer = rb.getRowsTableContainer();
-										panel.add(rTabContainer);
-										rb.resetRowsTableContainer();
-										tabbedPane.repaint();
-									}
-								});
-							}
-						});
+				    	if (metaDataDetails[0] != null) {
+				    		UIUtil.invokeLater(new Runnable() {
+								@Override
+								public void run() {
+									LoadJob loadJob = rb.newLoadJob(metaDataDetails[0], null);
+						    		loadJob.run();
+						        	JComponent rTabContainer = rb.getRowsTableContainer();
+							    	detailsViews.put(cacheKey, rTabContainer);
+									final JTable rTab = rb.getRowsTable();
+									UIUtil.invokeLater(new Runnable() {
+										@Override
+										public void run() {
+											mdd.adjustRowsTable(rTab);
+											panel.removeAll();
+								        	JComponent rTabContainer = rb.getRowsTableContainer();
+											panel.add(rTabContainer);
+											rb.resetRowsTableContainer();
+											tabbedPane.repaint();
+										}
+									});
+								}
+							});
+				    	}
 					}
 				});
 			} catch (InterruptedException e) {
@@ -428,7 +431,8 @@ public abstract class MetaDataDetailsPanel extends javax.swing.JPanel {
 		    	} else {
 		    		JScrollPane tab = new JScrollPane();
 		    		RSyntaxTextArea area = new RSyntaxTextArea();
-		    		
+					area.setBracketMatchingEnabled(false);
+
 		    		area.setEditable(false);
 		    		tab.setViewportView(area);
 		    		area.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_SQL);

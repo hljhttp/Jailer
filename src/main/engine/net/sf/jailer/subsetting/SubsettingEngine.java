@@ -36,6 +36,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
@@ -59,7 +60,6 @@ import net.sf.jailer.configuration.Configuration;
 import net.sf.jailer.configuration.DBMS;
 import net.sf.jailer.database.DMLTransformer;
 import net.sf.jailer.database.DeletionTransformer;
-import net.sf.jailer.database.PrimaryKeyValidator;
 import net.sf.jailer.database.Session;
 import net.sf.jailer.database.StatisticRenovator;
 import net.sf.jailer.database.WorkingTableScope;
@@ -550,12 +550,12 @@ public class SubsettingEngine {
 			parentFile.mkdirs();
 		}
 		OutputStream outputStream = new FileOutputStream(file);
-		if (sqlScriptFile.toLowerCase().endsWith(".zip")) {
+		if (sqlScriptFile.toLowerCase(Locale.ENGLISH).endsWith(".zip")) {
 			outputStream = new ZipOutputStream(outputStream);
 			String zipFileName = file.getName();
 			((ZipOutputStream)outputStream).putNextEntry(new ZipEntry(zipFileName.substring(0, zipFileName.length() - 4)));
 		} else {
-			if (sqlScriptFile.toLowerCase().endsWith(".gz")) {
+			if (sqlScriptFile.toLowerCase(Locale.ENGLISH).endsWith(".gz")) {
 				outputStream = new GZIPOutputStream(outputStream);
 			}
 		}
@@ -608,7 +608,7 @@ public class SubsettingEngine {
 			DBMS sourceConfig = session.dbms;
 			DBMS targetConfig = targetDBMSConfiguration(entityGraph.getTargetSession());
 			Quoting targetQuoting;
-			targetQuoting = new Quoting(session);
+			targetQuoting = Quoting.getQuoting(session);
 			if (sourceConfig != targetConfig) {
 				targetQuoting.setIdentifierQuoteString(targetConfig.getIdentifierQuoteString());
 			}
@@ -1019,12 +1019,12 @@ public class SubsettingEngine {
 		_log.info("writing file '" + xmlFile + "'...");
 
 		OutputStream outputStream = new FileOutputStream(new File(xmlFile));
-		if (xmlFile.toLowerCase().endsWith(".zip")) {
+		if (xmlFile.toLowerCase(Locale.ENGLISH).endsWith(".zip")) {
 			outputStream = new ZipOutputStream(outputStream);
 			String zipFileName = new File(xmlFile).getName();
 			((ZipOutputStream)outputStream).putNextEntry(new ZipEntry(zipFileName.substring(0, zipFileName.length() - 4)));
 		} else {
-			if (xmlFile.toLowerCase().endsWith(".gz")) {
+			if (xmlFile.toLowerCase(Locale.ENGLISH).endsWith(".gz")) {
 				outputStream = new GZIPOutputStream(outputStream);
 			}
 		}
@@ -1388,24 +1388,6 @@ public class SubsettingEngine {
 
 		long startTimestamp = System.currentTimeMillis();
 		Long afterCollectionTimestamp = null; 
-		
-		Set<Table> toCheck = new HashSet<Table>();
-		boolean insertOnly = Boolean.FALSE.equals(extractionModel.subject.getUpsert()) && !executionContext.getUpsertOnly();
-		if (extractionModel.additionalSubjects != null) {
-			for (AdditionalSubject as: extractionModel.additionalSubjects) {
-				toCheck.add(as.getSubject());
-				if (Boolean.TRUE.equals(as.getSubject().getUpsert())) {
-					insertOnly = false;
-				}
-			}
-		}
-		toCheck.add(extractionModel.subject);
-		boolean hasRowID = !(session.dbms.getRowidName() == null || executionContext.getNoRowid() || !insertOnly || deleteScriptFileName != null);
-		Set<Table> checked = extractionModel.dataModel.checkForPrimaryKey(toCheck, hasRowID);
-		if (executionContext.getCheckPrimaryKeys()) {
-			executionContext.getProgressListenerRegistry().fireNewStage("check primary keys", false, false);
-			new PrimaryKeyValidator().validatePrimaryKey(session, checked, hasRowID, jobManager);
-		}
 
 		subjectCondition = ParameterHandler.assignParameterValues(subjectCondition, executionContext.getParameters());
 		

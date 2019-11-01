@@ -22,6 +22,7 @@ import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -86,7 +87,7 @@ public class RemoteEntityGraph extends EntityGraph {
 	protected RemoteEntityGraph(DataModel dataModel, int graphID, Session session, PrimaryKey universalPrimaryKey, Runnable updateStatistics, ExecutionContext executionContext) throws SQLException {
 		super(graphID, dataModel, executionContext);
 		this.session = session;
-		this.quoting = new Quoting(session);
+		this.quoting = Quoting.getQuoting(session);
 		this.universalPrimaryKey = universalPrimaryKey;
 		this.updateStatistics = updateStatistics;
 		this.rowIdSupport = new RowIdSupport(dataModel, session.dbms, executionContext);
@@ -95,7 +96,7 @@ public class RemoteEntityGraph extends EntityGraph {
 		if (fieldProcTablesFile.exists()) {
 			try {
 				for (CsvFile.Line line: new CsvFile(fieldProcTablesFile).getLines()) {
-					fieldProcTables.add(line.cells.get(0).toLowerCase());
+					fieldProcTables.add(line.cells.get(0).toLowerCase(Locale.ENGLISH));
 				}
 				Session._log.info("tables with field procedures: " + fieldProcTables);
 			} catch (Exception e) {
@@ -467,7 +468,7 @@ public class RemoteEntityGraph extends EntityGraph {
 		session.executeUpdate(
 				"Update " + dmlTableReference(ENTITY, session) + " set birthday=0 " +
 				"Where r_entitygraph=" + graphID + " and birthday>0 and " +
-					   (table != null? "type=" + typeName(table) + " and " : "") +
+					   "type=" + typeName(table) + " and " +
 					   "not exists (Select * from " + dmlTableReference(DEPENDENCY, session) + " D " +
 						   "Where D.r_entitygraph=" + graphID + " and D.assoc=0 and D.from_type=" + dmlTableReference(ENTITY, session) + ".type and " +
 								 fromEqualsPK + ")");
@@ -650,7 +651,7 @@ public class RemoteEntityGraph extends EntityGraph {
 		long rc;
 		if (orderByPK) {
 			String sqlQueryWithOrderBy = sqlQuery +
-				(orderByPK? " order by " + rowIdSupport.getPrimaryKey(table).columnList("T.", quoting) : "");
+				" order by " + rowIdSupport.getPrimaryKey(table).columnList("T.", quoting);
 			rc = session.executeQuery(sqlQueryWithOrderBy, reader, sqlQuery, null, 0, withExplicitCommit());
 		} else {
 			rc = session.executeQuery(sqlQuery, reader, withExplicitCommit());
@@ -712,7 +713,7 @@ public class RemoteEntityGraph extends EntityGraph {
 				}
 			}
 			if (filterExpression != null) {
-				if (filterExpression.trim().toLowerCase().startsWith("select")) {
+				if (filterExpression.trim().toLowerCase(Locale.ENGLISH).startsWith("select")) {
 					sb.append("(" + filterExpression + ")");
 				} else {
 					sb.append(filterExpression);
@@ -1055,7 +1056,7 @@ public class RemoteEntityGraph extends EntityGraph {
 			Column tableColumn = match.get(column);
 			sb.append(entityAlias + "." + columnPrefix + column.name);
 			if (tableColumn != null) {
-				if (fieldProcTables.contains(table.getUnqualifiedName().toLowerCase())) {
+				if (fieldProcTables.contains(table.getUnqualifiedName().toLowerCase(Locale.ENGLISH))) {
 					sb.append(" = " + tableColumn.type + "(" + tableAlias + "." + quoting.requote(tableColumn.name) + ")");
 				} else {
 					sb.append("=" + tableAlias + "." + quoting.requote(tableColumn.name));

@@ -89,7 +89,7 @@ public class MDSchema extends MDObject {
 					}
 				}
 			}
-		});
+		}, "Metadata-LoadColumns");
 		thread.setDaemon(true);
 		thread.start();
 
@@ -104,7 +104,7 @@ public class MDSchema extends MDObject {
 					}
 				}
 			}
-		});
+		}, "Metadata-LoadTables");
 		thread.setDaemon(true);
 		thread.start();
 
@@ -122,7 +122,7 @@ public class MDSchema extends MDObject {
 						}
 					}
 				}
-			});
+			}, "Metadata-LoadOther-" + (i + 1));
 			thread.setDaemon(true);
 			thread.start();
 		}
@@ -211,7 +211,7 @@ public class MDSchema extends MDObject {
 		String query = getMetaDataSource().getSession().dbms.getEstimatedRowCountQuery();
 		if (query != null) {
 			try {
-				getMetaDataSource().getSession().executeQuery(String.format(query, getUnquotedName()), new AbstractResultSetReader() {
+				getMetaDataSource().getSession().executeQuery(String.format(Locale.ENGLISH, query, getUnquotedName()), new AbstractResultSetReader() {
 					@Override
 					public void readCurrentRow(ResultSet resultSet) throws SQLException {
 						String tableName = resultSet.getString(1);
@@ -317,7 +317,7 @@ public class MDSchema extends MDObject {
 						schema = Quoting.staticUnquote(schema);
 					}
 					String query = getMetaDataSource().getSession().dbms.getConstraintsQuery();
-					ResultSet rs = cStmt.executeQuery(String.format(query, schema));
+					ResultSet rs = cStmt.executeQuery(String.format(Locale.ENGLISH, query, schema));
 					MemorizedResultSet result = new MemorizedResultSet(rs, null, getMetaDataSource().getSession(), schema);
 					rs.close();
 					List<Object[]> rows = new ArrayList<Object[]>();
@@ -370,11 +370,11 @@ public class MDSchema extends MDObject {
 	public static UIUtil.IconWithText getConstraintTypeIcon(final String type) {
 		ImageIcon icon = null;
 		if (type != null) {
-			String iconURL = "constraint_" + (type.replaceAll(" +", "").toLowerCase()) + ".png";
+			String iconURL = "constraint_" + (type.replaceAll(" +", "").toLowerCase(Locale.ENGLISH)) + ".png";
 			icon = constraintTypeIcons.get(iconURL);
 			if (icon == null) {
 				try {
-		            icon = new ImageIcon(MDSchema.class.getResource("/net/sf/jailer/ui/resource/" + iconURL));
+		            icon = UIUtil.readImage("/" + iconURL);
 		        } catch (Exception e) {
 		        }
 			}

@@ -262,7 +262,7 @@ public class AssociationEditor extends javax.swing.JDialog {
         jPanel1.add(jButton1, gridBagConstraints);
 
         jLabel3.setFont(jLabel3.getFont().deriveFont(jLabel3.getFont().getSize()+1f));
-        jLabel3.setText("<html>&nbsp;* use 'A' as alias for <i>From</i>, use 'B' as alias for <i>To</i>.</html>");
+        jLabel3.setText("<html>&nbsp;* <i>Ctrl+Space</i> for code completion.");
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 0;
         gridBagConstraints.gridy = 0;
@@ -496,8 +496,12 @@ public class AssociationEditor extends javax.swing.JDialog {
 				if (columns.containsKey(tabLine.cells.get(0))) {
 					Line line = columns.get(tabLine.cells.get(0));
 					for (int i = 1; i < line.length; ++i) {
-						Column column = Column.parse(line.cells.get(i));
-						tableModel.columns.add(column.name);
+						try {
+							Column column = Column.parse(line.cells.get(i));
+							tableModel.columns.add(column.name);
+						} catch (Exception e) {
+							// ignore
+						}
 					}
 				}
 				tableModels.add(tableModel);

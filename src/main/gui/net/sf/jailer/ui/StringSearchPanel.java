@@ -75,7 +75,6 @@ import org.fife.rsta.ui.EscapableDialog;
 import net.sf.jailer.datamodel.DataModel;
 import net.sf.jailer.datamodel.Table;
 import net.sf.jailer.ui.databrowser.metadata.MDSchema;
-import net.sf.jailer.ui.databrowser.metadata.MetaDataPanel;
 import net.sf.jailer.ui.databrowser.metadata.MetaDataSource;
 
 /**
@@ -114,8 +113,7 @@ public class StringSearchPanel extends javax.swing.JPanel {
 
 	public static JToggleButton createSearchButton(final Window owner, final javax.swing.JComboBox comboBox, final Object titel, final Runnable onSuccess, final Prepare prepare, final MetaDataSource metaDataSource, final DataModel dataModel, boolean alternativeIcon, final AdditionalComponentFactory additionalComponentFactory, final boolean locateUnderButton) {
 		final JToggleButton button = new JToggleButton();
-		button.setIcon(UIUtil.scaleIcon(button, alternativeIcon? icon2 : icon));
-		button.setToolTipText("Find Table");
+		button.setIcon(getSearchIcon(alternativeIcon, button));
 		button.addActionListener(new ActionListener() {
 			@Override
 			public void actionPerformed(ActionEvent e) {
@@ -124,24 +122,25 @@ public class StringSearchPanel extends javax.swing.JPanel {
 					@Override
 					public void run() {
 				        try {
-				        	Point buttonLocation = button.getLocationOnScreen();
-				        	Point location;
-				        	if (locateUnderButton) {
-				        		location = new Point(buttonLocation.x + button.getWidth(), buttonLocation.y);
-				        	} else {
-				        		location = buttonLocation;
+				        	if (button.isShowing()) {
+					        	Point buttonLocation = button.getLocationOnScreen();
+					        	Point location;
+					        	if (locateUnderButton) {
+					        		location = new Point(buttonLocation.x + button.getWidth(), buttonLocation.y);
+					        	} else {
+					        		location = buttonLocation;
+					        	}
+								StringSearchPanel searchPanel = new StringSearchPanel(button, comboBox, metaDataSource, dataModel, prepare, onSuccess);
+								if (additionalComponentFactory != null) {
+									searchPanel.plugInPanel.add(additionalComponentFactory.create(searchPanel), java.awt.BorderLayout.CENTER);
+									searchPanel.plugInPanel.setVisible(true);
+								}
+								Window ownerWindow = owner;
+								if (ownerWindow == null) {
+									ownerWindow = SwingUtilities.getWindowAncestor(comboBox);
+								}
+								searchPanel.find(ownerWindow, titel, location.x, location.y, locateUnderButton);
 				        	}
-							StringSearchPanel searchPanel = new StringSearchPanel(button, comboBox, metaDataSource, dataModel, prepare, onSuccess);
-							if (additionalComponentFactory != null) {
-								searchPanel.plugInPanel.add(additionalComponentFactory.create(searchPanel), java.awt.BorderLayout.CENTER);
-							} else {
-								searchPanel.plugInPanel.setVisible(false);
-							}
-							Window ownerWindow = owner;
-							if (ownerWindow == null) {
-								ownerWindow = SwingUtilities.getWindowAncestor(comboBox);
-							}
-							searchPanel.find(ownerWindow, titel, location.x, location.y, locateUnderButton);
 				        } finally {
 				        	UIUtil.resetWaitCursor(button);
 				        }
@@ -175,6 +174,23 @@ public class StringSearchPanel extends javax.swing.JPanel {
 		return button;
 	}
 
+	private static ImageIcon sIcon = null;
+	private static ImageIcon sIcon2 = null;
+	
+	public static ImageIcon getSearchIcon(boolean alternativeIcon, final JComponent button) {
+		if (alternativeIcon) {
+			if (sIcon2 == null) {
+				sIcon2 = UIUtil.scaleIcon(button, icon2);
+			}
+			return sIcon2;
+		} else {
+			if (sIcon == null) {
+				sIcon = UIUtil.scaleIcon(button, icon);
+			}
+			return sIcon;
+		}
+	}
+
 	private static void updateEnabledState(JToggleButton button, JComboBox comboBox) {
 		button.setEnabled(comboBox.getModel().getSize() > 1 || comboBox.getModel().getSize() == 1 && !"".equals(comboBox.getModel().getElementAt(0)));
 	}
@@ -187,7 +203,9 @@ public class StringSearchPanel extends javax.swing.JPanel {
 			}
 		}
 		result = null;
-		button.setSelected(false);
+		if (button != null) {
+			button.setSelected(false);
+		}
 	}
 
 	public void find(Window owner, Object titel, int x, int y, boolean locateUnderButton) {
@@ -231,7 +249,7 @@ public class StringSearchPanel extends javax.swing.JPanel {
 		
 		dialog.pack();
 		double mh = 440;
-		double f = searchList.getModel().getSize() / 20.0;
+		double f = searchList.getModel().getSize() / 18.0;
 		if (f < 1) {
 			mh = Math.max(240, mh * f);
 		}
@@ -244,16 +262,41 @@ public class StringSearchPanel extends javax.swing.JPanel {
 		if (pv) {
 			minWidth *= 2;
 		}
-		dialog.setSize(Math.max(minWidth, dialog.getWidth()), Math.min(height, 600));
-		UIUtil.fit(dialog);
+		Integer prefWidth = preferredWidth();
+		Integer maxX = maxX();
+		dialog.setSize(prefWidth != null ? prefWidth : Math.max(minWidth, dialog.getWidth()), Math.min(height, 600));
+		if (maxX != null) {
+			dialog.setLocation(Math.max(0, Math.min(maxX, dialog.getX())), dialog.getY());
+		}
+		Integer maxY = maxY(dialog.getHeight());
+		if (maxY != null && maxY < dialog.getY()) {
+			int deltaH = Math.min(dialog.getY() - maxY, (int) (0.30 * dialog.getHeight()));
+			maxY += deltaH;
+			dialog.setSize(dialog.getWidth(), dialog.getHeight() - deltaH);
+			dialog.setLocation(dialog.getX(), Math.max(0, maxY));
+		}
 		plugInPanel.setVisible(pv);
 
 		result = null;
-		button.setSelected(true);
+		if (button != null) {
+			button.setSelected(true);
+		}
 		dialog.setVisible(true);
 	}
-	
-	private final int MAX_LIST_LENGTH = 100;
+
+	protected Integer preferredWidth() {
+		return null;
+	}
+
+	protected Integer maxX() {
+		return null;
+	}
+
+	protected Integer maxY(int height) {
+		return null;
+	}
+
+	private final int MAX_LIST_LENGTH = 80;
 	private boolean showAll = false;
 	private String showAllLabel;
 	 
@@ -310,7 +353,9 @@ public class StringSearchPanel extends javax.swing.JPanel {
     	this.prepare = prepare;
     	this.onSuccess = onSuccess;
         initComponents();
-        
+
+        plugInPanel.setVisible(false);
+
         if (metaDataSource != null) {
         	List<MDSchema> vis = new ArrayList<MDSchema>();
         	Set<MDSchema> visAsSet = new HashSet<MDSchema>();
@@ -330,7 +375,10 @@ public class StringSearchPanel extends javax.swing.JPanel {
 					return o1.getName().compareTo(o2.getName());
 				}
 			});
-	        vis.add(0, metaDataSource.getDefaultSchema());
+	        MDSchema defaultSchema = metaDataSource.getDefaultSchema();
+	        if (defaultSchema != null) {
+	        	vis.add(0, defaultSchema);
+	        }
 	        createSchemaSelectionList(visPanel, vis);
         }
 		
@@ -426,6 +474,12 @@ public class StringSearchPanel extends javax.swing.JPanel {
 				String item = value.toString();
 				if (i >= 0) {
 					item = item.substring(0, i) + "<b><font color=\"" + hlColor + "\">" + item.substring(i, i + search.length()) + "</font></b>" + item.substring(i + search.length());
+				}
+				if (stringCount != null) {
+					Integer count = stringCount.get(value.toString());
+					if (count != null && count > 1) {
+						item += "&nbsp;<font color=" + (isSelected? "#66ff66" : "#006600") + ">&nbsp;&nbsp;(" + count + ")</font>";
+					}
 				}
 				String html = "<html>" + item;
 				Component render = super.getListCellRendererComponent(list, html, index, false, cellHasFocus);
@@ -796,6 +850,11 @@ public class StringSearchPanel extends javax.swing.JPanel {
         selectSchemas(schemas);
     }//GEN-LAST:event_selectAllButtonActionPerformed
 
+    Map<String, Integer> stringCount = null;
+
+	public void setStringCount(Map<String, Integer> stringCount) {
+		this.stringCount = stringCount;
+	}
 
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.JToggleButton cancelButton;
@@ -821,14 +880,8 @@ public class StringSearchPanel extends javax.swing.JPanel {
     static private ImageIcon icon;
     static private ImageIcon icon2;
     static {
-		String dir = "/net/sf/jailer/ui/resource";
-		
 		// load images
-		try {
-			icon = new ImageIcon(MetaDataPanel.class.getResource(dir + "/search.png"));
-			icon2 = new ImageIcon(MetaDataPanel.class.getResource(dir + "/search2.png"));
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
+		icon = UIUtil.readImage("/search.png");
+		icon2 = UIUtil.readImage("/search2.png");
 	}
 }

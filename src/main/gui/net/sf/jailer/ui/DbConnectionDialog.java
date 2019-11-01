@@ -17,8 +17,7 @@ package net.sf.jailer.ui;
 
 import java.awt.Color;
 import java.awt.Component;
-import java.awt.Cursor;
-import java.awt.Image;
+import java.awt.Font;
 import java.awt.Point;
 import java.awt.Window;
 import java.awt.event.ComponentEvent;
@@ -35,6 +34,8 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -59,6 +60,8 @@ import net.sf.jailer.configuration.DBMS;
 import net.sf.jailer.database.BasicDataSource;
 import net.sf.jailer.database.Session;
 import net.sf.jailer.modelbuilder.JDBCMetaDataBasedModelElementFinder;
+import net.sf.jailer.ui.commandline.CommandLineInstance;
+import net.sf.jailer.ui.commandline.UICommandLine;
 import net.sf.jailer.ui.databrowser.metadata.MetaDataPanel;
 import net.sf.jailer.ui.util.UISettings;
 import net.sf.jailer.util.ClasspathUtil;
@@ -123,6 +126,13 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 	private List<ConnectionInfo> connectionList;
 
 	/**
+	 * Gets list of available connections.
+	 */
+	public List<ConnectionInfo> getConnectionList() {
+		return connectionList;
+	}
+
+	/**
 	 * Currently selected connection.
 	 */
 	public ConnectionInfo currentConnection;
@@ -144,6 +154,11 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 	}
 
 	private boolean located = false;
+	
+	private Font font =  new JLabel("normal").getFont();
+	private Font normal = new Font(font.getName(), font.getStyle() & ~Font.BOLD, font.getSize());
+    private Font bold = new Font(font.getName(), font.getStyle() | Font.BOLD, font.getSize());
+	private Map<String, Date> aliasTimestamp = new HashMap<String, Date>();
 	
 	/**
 	 * Gets connection to DB.
@@ -169,6 +184,9 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 			setTitle((reason == null ? "" : (reason + " - ")) + "Connect.");
 			sortConnectionList();
 			refresh();
+			if (connectionsTable.getModel().getRowCount() > 0) {
+				connectionsTable.getSelectionModel().setSelectionInterval(0, 0);
+			}
 			setVisible(true);
 			if (currentConnection == null) {
 				isConnected = false;
@@ -185,6 +203,7 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 	private final InfoBar infoBar;
 	private final String currentModelSubfolder;
 	private final boolean dataModelAware;
+	private final boolean showOnlyRecentyUsedConnections;
 	
 	/** Creates new form DbConnectionDialog */
 	public DbConnectionDialog(Window parent, DbConnectionDialog other, String applicationName, ExecutionContext executionContext) {
@@ -206,15 +225,16 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 	 * @param applicationName application name. Used to create the name of the demo database alias. 
 	 */
 	public DbConnectionDialog(Window parent, String applicationName, InfoBar infoBar, ExecutionContext executionContext) {
-		this(parent, applicationName, infoBar, executionContext, true);
+		this(parent, applicationName, infoBar, executionContext, true, false);
 	}
 	
 	/** 
 	 * Creates new form DbConnectionDialog
 	 * 
 	 * @param applicationName application name. Used to create the name of the demo database alias. 
+	 * @param showOnlyRecentyUsedConnections 
 	 */
-	public DbConnectionDialog(Window parent, String applicationName, InfoBar infoBar, ExecutionContext executionContext, boolean dataModelAware) {
+	public DbConnectionDialog(Window parent, String applicationName, InfoBar infoBar, ExecutionContext executionContext, boolean dataModelAware, boolean showOnlyRecentyUsedConnections) {
 		super(parent);
 		setModal(true);
 		this.executionContext = executionContext;
@@ -222,8 +242,10 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 		this.infoBar = infoBar;
 		this.currentModelSubfolder = DataModelManager.getCurrentModelSubfolder(executionContext);
 		this.dataModelAware = dataModelAware;
-		loadConnectionList();
+		this.showOnlyRecentyUsedConnections = showOnlyRecentyUsedConnections;
+		loadConnectionList(showOnlyRecentyUsedConnections);
 		initComponents();
+		restoreLastSessionButton.setVisible(false);
 		connectionsTable.setAutoCreateRowSorter(true);
 
 		if (infoBar == null) {
@@ -236,6 +258,11 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 		
 		newButton.setVisible(dataModelAware);
 		copy.setVisible(dataModelAware);
+		
+		if (showOnlyRecentyUsedConnections) {
+			editButton.setVisible(false);
+			deleteButton.setVisible(false);
+		}
 		
 		int i;
 		initTableModel();
@@ -278,6 +305,7 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 							}
 						}
 						((JLabel) render).setToolTipText(String.valueOf(value));
+						render.setFont(column == 0? bold : normal);
 						return render;
 					}
 				});
@@ -346,9 +374,13 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 		int i = 0;
 		for (ConnectionInfo ci: connectionList) {
 			Pair<String, Long> modelDetails = DataModelManager.getModelDetails(ci.dataModelFolder, executionContext);
-			data[i++] = new Object[] { ci.alias, ci.user, ci.url, ci.dataModelFolder == null? "Default" : modelDetails == null? "" : modelDetails.a };
+			if (showOnlyRecentyUsedConnections) {
+				data[i++] = new Object[] { ci.alias, ci.user, ci.url, ci.dataModelFolder == null? "Default" : modelDetails == null? "" : modelDetails.a, UIUtil.toDateAsString(aliasTimestamp.get(ci.alias)) };
+			} else {
+				data[i++] = new Object[] { ci.alias, ci.user, ci.url, ci.dataModelFolder == null? "Default" : modelDetails == null? "" : modelDetails.a };
+			}
 		}
-		DefaultTableModel tableModel = new DefaultTableModel(data, new String[] { "Alias", "User", "URL", "Data Model" }) {
+		DefaultTableModel tableModel = new DefaultTableModel(data, !showOnlyRecentyUsedConnections? new String[] { "Alias", "User", "URL", "Data Model" } : new String[] { "Alias", "User", "URL", "Data Model", "Time" }) {
 			@Override
 			public boolean isCellEditable(int row, int column) {
 				return false;
@@ -418,8 +450,6 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 			if (currentModelSubfolder == null && warnOnConnect) {
 				warnOnConnect = false;
 				jButton1.setEnabled(false);
-			} else {
-				jButton1.setEnabled(true);
 			}
 			jButton1.setIcon(!warnOnConnect? null : getScaledWarnIcon());
 		} finally {
@@ -438,6 +468,9 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 	 * Stores the connections into the CONNECTIONS_FILE.
 	 */
 	private void store() {
+		if (showOnlyRecentyUsedConnections) {
+			return;
+		}
 		try {
 			File file = Environment.newFile(CONNECTIONS_FILE);
 			ObjectOutputStream out = new ObjectOutputStream(new FileOutputStream(file));
@@ -456,9 +489,10 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 	
 	/**
 	 * Loads connection list.
+	 * @param showOnlyRecentyUsedConnections 
 	 */
 	@SuppressWarnings("unchecked")
-	private void loadConnectionList() {
+	private void loadConnectionList(boolean showOnlyRecentyUsedConnections) {
 		connectionList = new ArrayList<ConnectionInfo>();
 		currentConnection = null;
 		boolean ok = false;
@@ -487,6 +521,10 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 						if (connectionInfo.jar4 == null) {
 							connectionInfo.jar4 = "";
 						}
+						connectionInfo.jar1 = UIUtil.correctFileSeparator(connectionInfo.jar1);
+						connectionInfo.jar2 = UIUtil.correctFileSeparator(connectionInfo.jar2);
+						connectionInfo.jar3 = UIUtil.correctFileSeparator(connectionInfo.jar3);
+						connectionInfo.jar4 = UIUtil.correctFileSeparator(connectionInfo.jar4);
 					}
 					preV4 = false;
 				} catch (Throwable t) {
@@ -527,7 +565,7 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 						}
 					}
 				}
-			} catch (Exception e) {
+			} catch (Throwable e) {
 				// ignore
 			}
 		}
@@ -555,10 +593,27 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 			connectionList.add(ci);
 			store();
 		}
+		sortConnectionList();
+		
+		if (showOnlyRecentyUsedConnections) {
+			List<ConnectionInfo> recUsedConnectionList = new ArrayList<ConnectionInfo>();
+			
+			for (Pair<String, Date> alias: UISettings.loadRecentConnectionAliases()) {
+				for (ConnectionInfo ci: connectionList) {
+					if (ci.alias != null && ci.alias.equals(alias.a)) {
+						recUsedConnectionList.add(ci);
+						aliasTimestamp.put(alias.a, alias.b);
+						break;
+					}
+				}
+			}
+			
+			connectionList = recUsedConnectionList;
+		}
+
 		if (connectionList.size() == 1) {
 			currentConnection = connectionList.get(0);
 		}
-		sortConnectionList();
 	}
 
 	private void sortConnectionList() {
@@ -597,8 +652,10 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 
         mainPanel = new javax.swing.JPanel();
         jPanel2 = new javax.swing.JPanel();
+        restoreLastSessionButton = new javax.swing.JButton();
         closeButton = new javax.swing.JButton();
         jButton1 = new javax.swing.JButton();
+        jLabel2 = new javax.swing.JLabel();
         jPanel3 = new javax.swing.JPanel();
         newButton = new javax.swing.JButton();
         editButton = new javax.swing.JButton();
@@ -618,6 +675,19 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 
         jPanel2.setLayout(new java.awt.GridBagLayout());
 
+        restoreLastSessionButton.setText("Restore last Session");
+        restoreLastSessionButton.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                restoreLastSessionButtonActionPerformed(evt);
+            }
+        });
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 1;
+        gridBagConstraints.gridy = 0;
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.NORTHEAST;
+        gridBagConstraints.insets = new java.awt.Insets(4, 2, 0, 16);
+        jPanel2.add(restoreLastSessionButton, gridBagConstraints);
+
         closeButton.setText(" Cancel ");
         closeButton.addActionListener(new java.awt.event.ActionListener() {
             public void actionPerformed(java.awt.event.ActionEvent evt) {
@@ -625,27 +695,30 @@ public class DbConnectionDialog extends javax.swing.JDialog {
             }
         });
         gridBagConstraints = new java.awt.GridBagConstraints();
-        gridBagConstraints.gridx = 1;
+        gridBagConstraints.gridx = 3;
         gridBagConstraints.gridy = 0;
         gridBagConstraints.anchor = java.awt.GridBagConstraints.NORTHEAST;
-        gridBagConstraints.weighty = 1.0;
         gridBagConstraints.insets = new java.awt.Insets(4, 0, 0, 4);
         jPanel2.add(closeButton, gridBagConstraints);
 
         jButton1.setText(" Connect ");
+        jButton1.setEnabled(false);
         jButton1.addActionListener(new java.awt.event.ActionListener() {
             public void actionPerformed(java.awt.event.ActionEvent evt) {
                 jButton1ActionPerformed(evt);
             }
         });
         gridBagConstraints = new java.awt.GridBagConstraints();
-        gridBagConstraints.gridx = 0;
+        gridBagConstraints.gridx = 2;
         gridBagConstraints.gridy = 0;
         gridBagConstraints.anchor = java.awt.GridBagConstraints.NORTHEAST;
-        gridBagConstraints.weightx = 1.0;
-        gridBagConstraints.weighty = 1.0;
-        gridBagConstraints.insets = new java.awt.Insets(4, 4, 0, 4);
+        gridBagConstraints.insets = new java.awt.Insets(4, 4, 0, 2);
         jPanel2.add(jButton1, gridBagConstraints);
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 0;
+        gridBagConstraints.gridy = 0;
+        gridBagConstraints.weightx = 1.0;
+        jPanel2.add(jLabel2, gridBagConstraints);
 
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 0;
@@ -892,6 +965,10 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 		setVisible(false);
 	}//GEN-LAST:event_closeButtonActionPerformed
 
+    private void restoreLastSessionButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_restoreLastSessionButtonActionPerformed
+
+    }//GEN-LAST:event_restoreLastSessionButtonActionPerformed
+
 	/**
 	 * Opens detail editor for a connection.
 	 * 
@@ -924,7 +1001,11 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 			UIUtil.setWaitCursor(root);
 			if (testConnection(mainPanel, currentConnection)) {
 				isConnected = true;
+				executionContext.setCurrentConnectionAlias(currentConnection.alias);
 				onConnect(currentConnection);
+				if (currentConnection.alias != null && !"".equals(currentConnection.alias)) {
+					UISettings.addRecentConnectionAliases(currentConnection.alias);
+				}
 			}
 		} finally {
 			UIUtil.resetWaitCursor(root);
@@ -932,12 +1013,6 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 	}
 
 	protected void onConnect(ConnectionInfo currentConnection) {
-		if (currentConnection != null && currentConnection.url != null) {
-			if (currentConnection.url.toLowerCase().startsWith("jdbc:jtds:")) {
-				JOptionPane.showMessageDialog(this, "The jTDS JDBC Driver is no longer supported.");
-				return;
-			}
-		}
 		setVisible(false);
 	}
 
@@ -973,7 +1048,7 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 		try {
 			Window w = parent instanceof Window? (Window) parent : SwingUtilities.getWindowAncestor(parent);
 			BasicDataSource dataSource = UIUtil.createBasicDataSource(w, ci.driverClass, ci.url, ci.user, ci.password, 0, urls);
-			SessionForUI session = SessionForUI.createSession(dataSource, dataSource.dbms, null, w);
+			SessionForUI session = SessionForUI.createSession(dataSource, dataSource.dbms, null, true, w);
 			String databaseProductName = null;
 			if (session != null) {
 				try {
@@ -1011,9 +1086,9 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 			return false;
 		} catch (Throwable e) {
 			if (e.getCause() instanceof ClassNotFoundException) {
-				UIUtil.showException(parent, "Could not connect to DB", new ClassNotFoundException("JDBC driver class not found: '" + e.getMessage() + "'", e.getCause()), UIUtil.EXCEPTION_CONTEXT_USER_ERROR);
+				UIUtil.showException(parent, "Could not connect to DB", new ClassNotFoundException("JDBC driver class not found: '" + e.getMessage() + "'", e.getCause()), UIUtil.EXCEPTION_CONTEXT_MB_USER_ERROR);
 			} else {
-				UIUtil.showException(parent, "Could not connect to DB (" + (e.getClass().getSimpleName()) + ")", e, UIUtil.EXCEPTION_CONTEXT_USER_ERROR);
+				UIUtil.showException(parent, "Could not connect to DB (" + (e.getClass().getSimpleName()) + ")", e, UIUtil.EXCEPTION_CONTEXT_MB_USER_ERROR);
 			}
 			return false;
 		}
@@ -1122,12 +1197,14 @@ public class DbConnectionDialog extends javax.swing.JDialog {
     private javax.swing.JLabel infoBarLabel;
     private javax.swing.JButton jButton1;
     private javax.swing.JLabel jLabel1;
+    private javax.swing.JLabel jLabel2;
     private javax.swing.JPanel jPanel2;
     private javax.swing.JPanel jPanel3;
     private javax.swing.JPanel jPanel4;
     private javax.swing.JScrollPane jScrollPane2;
     public javax.swing.JPanel mainPanel;
     private javax.swing.JButton newButton;
+    public javax.swing.JButton restoreLastSessionButton;
     // End of variables declaration//GEN-END:variables
 
 	public String getUser() {
@@ -1139,7 +1216,7 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 	}
 
 	private boolean isAssignedToDataModel(int row) {
-		if (row >= connectionList.size()) {
+		if (row < 0 || row >= connectionList.size()) {
 			return false;
 		}
 		String rowFN = connectionList.get(row).dataModelFolder;
@@ -1161,11 +1238,11 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 	}
 
     private ImageIcon getScaledWarnIcon() {
-        if (scaledWarnIcon == null) {
+        if (scaledWarnIcon == null && warnIcon != null) {
             int heigth = getFontMetrics(new JLabel("M").getFont()).getHeight();
             double s = heigth / (double) warnIcon.getIconHeight();
             try {
-            	scaledWarnIcon = new ImageIcon(warnIcon.getImage().getScaledInstance((int)(warnIcon.getIconWidth() * s), (int)(warnIcon.getIconHeight() * s), Image.SCALE_SMOOTH));
+            	scaledWarnIcon = UIUtil.scaleIcon(warnIcon, s);
             } catch (Exception e) {
             	logger.info("error", e);
                 return null;
@@ -1173,20 +1250,47 @@ public class DbConnectionDialog extends javax.swing.JDialog {
         }
         return scaledWarnIcon;
     }
-    
-    // TODO: allow more than 4 jars
+
+    /**
+     * Try to automatically connect to the db specified via CLI.
+     */
+	public void autoConnect() {
+		ConnectionInfo ci = new ConnectionInfo();
+		UICommandLine cli = CommandLineInstance.getInstance();
+		
+		ci.alias = cli.alias != null? cli.alias : cli.url;
+		ci.dataModelFolder = cli.datamodelFolder;
+		ci.driverClass = cli.driver;
+		ci.jar1 = cli.jdbcjar != null? cli.jdbcjar : "";
+		ci.jar2 = cli.jdbcjar2 != null? cli.jdbcjar2 : "";;
+		ci.jar3 = cli.jdbcjar3 != null? cli.jdbcjar3 : "";;
+		ci.jar4 = cli.jdbcjar4 != null? cli.jdbcjar4 : "";;
+		ci.url = cli.url;
+		ci.user = cli.user;
+		ci.password = cli.password;
+		
+		if (ci.driverClass != null
+				&& ci.url != null
+				&& ci.user != null) {
+			if (testConnection(parent, ci)) {
+				currentConnection = ci;
+				executionContext.setCurrentConnectionAlias(currentConnection.alias);
+				isConnected = true;
+			}
+		}
+	}
+
+	public void selectFirstConnection() {
+		if (connectionsTable.getModel().getRowCount() > 0) {
+			connectionsTable.getSelectionModel().setSelectionInterval(0, 0);
+			jButton1.grabFocus();
+		}
+	}
 
     private static ImageIcon warnIcon;
     private static ImageIcon scaledWarnIcon;
     static {
-        String dir = "/net/sf/jailer/ui/resource";
-        
         // load images
-        try {
-            warnIcon = new ImageIcon(MetaDataPanel.class.getResource(dir + "/wanr.png"));
- 	    } catch (Exception e) {
-	    	logger.info("error", e);
-	        e.printStackTrace();
-	    }
+    	warnIcon = UIUtil.readImage("/wanr.png");
 	}
 }

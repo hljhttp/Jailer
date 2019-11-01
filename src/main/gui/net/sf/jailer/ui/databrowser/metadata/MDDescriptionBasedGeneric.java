@@ -25,6 +25,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
@@ -197,6 +198,7 @@ public class MDDescriptionBasedGeneric extends MDGeneric {
 									JTabbedPane tabbedPane = new JTabbedPane();
 									for (Entry<String, StringBuilder> e: rows.entrySet()) {
 										RSyntaxTextArea textPane = new RSyntaxTextArea(e.getValue().toString());
+										textPane.setBracketMatchingEnabled(false);
 										textPane.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_SQL);
 										textPane.setEditable(false);
 										textPane.setCaretPosition(0);
@@ -270,7 +272,7 @@ public class MDDescriptionBasedGeneric extends MDGeneric {
             if (parentName != null) {
             	parentName = Quoting.staticUnquote(parentName);
             }
-            ResultSet rs = cStmt.executeQuery(String.format(query, schema, parentName));
+            ResultSet rs = cStmt.executeQuery(String.format(Locale.ENGLISH, query, schema, parentName));
             MemorizedResultSet result = new MemorizedResultSet(rs, null, session, schema);
             rs.close();
             return result;

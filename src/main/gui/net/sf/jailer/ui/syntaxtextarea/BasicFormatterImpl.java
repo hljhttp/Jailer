@@ -26,6 +26,7 @@ package net.sf.jailer.ui.syntaxtextarea;
 
 import java.util.HashSet;
 import java.util.LinkedList;
+import java.util.Locale;
 import java.util.Set;
 import java.util.StringTokenizer;
 
@@ -83,11 +84,52 @@ public class BasicFormatterImpl {
 		MISC.add( "on" );
 	}
 
-	static final String indentString = "    ";
-	static final String initial = "\n    ";
+	static final String indentString = "     ";
+	static final String initial = "\n     ";
 
 	public String format(String source) {
+		return format0(source)
+				.replaceAll("(?is)\\)\\s+or\\s+\\(", ") or (")
+				.replaceAll("(?is)\\b(insert)\\n\\s*(into)\\b", "$1 $2")
+				.replaceAll("(?is)\\b(delete)\\n\\s*(from)\\b", "$1 $2")
+				.replaceAll("(?is)\\b(select)\\n\\s+(\\*)", "$1 $2")
+				.replaceAll("(?is)\\b(select)(\\n\\s+) (distinct)\\b", "$1 $3$2"); 
+	}
+
+	private String format0(String source) {
 		try {
+			if (source.trim().startsWith("(")) {
+				String formatted = new FormatProcess("where \n" + source).perform();
+				String result = formatted.replaceFirst("^\\s*where *\\n\\s*", "");
+				if (!result.equals(formatted)) {
+					String[] lines = result.split("\\r?\\n");
+					int pl = Integer.MAX_VALUE;
+					for (String line: lines) {
+						for (int i = 0; i < line.length(); ++i) {
+							if (line.charAt(i) != ' ') {
+								if (pl > i) {
+									pl = i;
+									break;
+								}
+							}
+						}
+						if (pl == 0) {
+							break;
+						}
+					}
+					if (pl > 0) {
+						StringBuilder sb = new StringBuilder();
+						for (String line: lines) {
+							if (sb.length() > 0) {
+								sb.append('\n');
+							}
+							sb.append(pl < line.length()? line.substring(pl) : line);
+						}
+						return sb.toString();
+					}
+					return result;
+				}
+			}
 			return new FormatProcess(source).perform();
 		} catch (Throwable t) {
 			return source;
@@ -107,7 +149,7 @@ public class BasicFormatterImpl {
 		private LinkedList parenCounts = new LinkedList();
 		private LinkedList afterByOrFromOrSelects = new LinkedList();
 		
-		int indent = 1;
+		int indent = 0;
 
 		StringBuffer result = new StringBuffer();
 		StringTokenizer tokens;
@@ -142,7 +184,7 @@ public class BasicFormatterImpl {
 					token = nextToken;
 				}
 				nextToken = null;
-				lcToken = token.toLowerCase();
+				lcToken = token.toLowerCase(Locale.ENGLISH);
 
 				if ("-".equals(token) && tokens.hasMoreTokens()) {
 					nextToken = tokens.nextToken();

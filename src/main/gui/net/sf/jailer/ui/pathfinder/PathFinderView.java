@@ -734,8 +734,8 @@ public abstract class PathFinderView extends javax.swing.JPanel {
         jPanel2 = new javax.swing.JPanel();
         jScrollPane1 = new javax.swing.JScrollPane();
         pathContainerPanel = new javax.swing.JPanel();
-        okButton = new javax.swing.JButton();
         okExpandButton = new javax.swing.JButton();
+        okButton = new javax.swing.JButton();
         sepLabel = new javax.swing.JLabel();
         jLabel2 = new javax.swing.JLabel();
         jPanel3 = new javax.swing.JPanel();
@@ -777,6 +777,18 @@ public abstract class PathFinderView extends javax.swing.JPanel {
         gridBagConstraints.weighty = 1.0;
         jPanel2.add(jScrollPane1, gridBagConstraints);
 
+        okExpandButton.setText("Show Path and open Tables");
+        okExpandButton.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                okExpandButtonActionPerformed(evt);
+            }
+        });
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 2;
+        gridBagConstraints.gridy = 3;
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.EAST;
+        jPanel2.add(okExpandButton, gridBagConstraints);
+
         okButton.setText("Show Path");
         okButton.addActionListener(new java.awt.event.ActionListener() {
             public void actionPerformed(java.awt.event.ActionEvent evt) {
@@ -789,18 +801,6 @@ public abstract class PathFinderView extends javax.swing.JPanel {
         gridBagConstraints.anchor = java.awt.GridBagConstraints.EAST;
         gridBagConstraints.weightx = 1.0;
         jPanel2.add(okButton, gridBagConstraints);
-
-        okExpandButton.setText("Show Path and open Tables");
-        okExpandButton.addActionListener(new java.awt.event.ActionListener() {
-            public void actionPerformed(java.awt.event.ActionEvent evt) {
-                okExpandButtonActionPerformed(evt);
-            }
-        });
-        gridBagConstraints = new java.awt.GridBagConstraints();
-        gridBagConstraints.gridx = 2;
-        gridBagConstraints.gridy = 3;
-        gridBagConstraints.anchor = java.awt.GridBagConstraints.EAST;
-        jPanel2.add(okExpandButton, gridBagConstraints);
 
         sepLabel.setText("                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       ");
         gridBagConstraints = new java.awt.GridBagConstraints();
@@ -1328,19 +1328,19 @@ public abstract class PathFinderView extends javax.swing.JPanel {
     	}
     }
 
+    public void initFocus() {
+        if (okExpandButton.isVisible() && okExpandButton.isEnabled()) {
+        	okExpandButton.grabFocus();
+        }
+    }
+
 	private static final Color COLOR_NOT_IN_CLOSURE = new Color(255, 80, 80);
 
 	static {
-        String dir = "/net/sf/jailer/ui/resource";
-        
         // load images
-        try {
-            cancelIcon = new ImageIcon(PathFinderView.class.getResource(dir + "/Cancel2.png"));
-            rightIcon = new ImageIcon(PathFinderView.class.getResource(dir + "/right.png"));
-            leftIcon = new ImageIcon(PathFinderView.class.getResource(dir + "/left.png"));
-        } catch (Exception e) {
-            // ignore
-        }
+        cancelIcon = UIUtil.readImage("/Cancel2.png");
+        rightIcon = UIUtil.readImage("/right.png");
+        leftIcon = UIUtil.readImage("/left.png");
     }
 
 	private ImageIcon redDotIconScaled;
@@ -1353,17 +1353,11 @@ public abstract class PathFinderView extends javax.swing.JPanel {
 	private static ImageIcon greenDotIcon;
 	private static ImageIcon greyDotIcon;
 	static {
-		String dir = "/net/sf/jailer/ui/resource";
-		
 		// load images
-		try {
-			redDotIcon = new ImageIcon(PathFinderView.class.getResource(dir + "/reddot.gif"));
-			blueDotIcon = new ImageIcon(PathFinderView.class.getResource(dir + "/bluedot.gif"));
-			greenDotIcon = new ImageIcon(PathFinderView.class.getResource(dir + "/greendot.gif"));
-			greyDotIcon = new ImageIcon(PathFinderView.class.getResource(dir + "/greydot.gif"));
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
+		redDotIcon = UIUtil.readImage("/reddot.gif");
+		blueDotIcon = UIUtil.readImage("/bluedot.gif");
+		greenDotIcon = UIUtil.readImage("/greendot.gif");
+		greyDotIcon = UIUtil.readImage("/greydot.gif");
 	}
 
     private static final long serialVersionUID = 1L;

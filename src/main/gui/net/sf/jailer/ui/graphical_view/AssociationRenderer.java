@@ -25,11 +25,10 @@ import java.awt.geom.AffineTransform;
 import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
 
-import javax.swing.ImageIcon;
-
 import net.sf.jailer.datamodel.AggregationSchema;
 import net.sf.jailer.datamodel.Association;
 import net.sf.jailer.datamodel.Cardinality;
+import net.sf.jailer.ui.UIUtil;
 import prefuse.Constants;
 import prefuse.render.EdgeRenderer;
 import prefuse.util.ColorLib;
@@ -299,7 +298,7 @@ public class AssociationRenderer extends EdgeRenderer {
 		}
 		item.setFillColor(color);
 		item.setStrokeColor(color);
-		if ("XML".equals(association.getDataModel().getExportModus())) {
+		if (association != null && "XML".equals(association.getDataModel().getExportModus())) {
 			m_arrowHead = updateArrowHead(m_arrowWidth, m_arrowHeight, association, isSelected);
 			arrowIsPotAggregation = true;
 		} else {
@@ -439,18 +438,12 @@ public class AssociationRenderer extends EdgeRenderer {
 	private final double PENDING_SIZE = 0.32;
 	{
 		// load images
-		try {
-			String dir = "/net/sf/jailer/ui/resource";
-			
-			starImage = new ImageIcon(getClass().getResource(dir + "/star.png")).getImage();
-			starWidth = starImage.getWidth(null);
-			starHeight = starImage.getHeight(null);
-			pendingImage = new ImageIcon(getClass().getResource(dir + "/wanr.png")).getImage();
-			pendingWidth = pendingImage.getWidth(null);
-			pendingHeight = pendingImage.getHeight(null);
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
+		starImage = UIUtil.readImage("/star.png").getImage();
+		starWidth = starImage.getWidth(null);
+		starHeight = starImage.getHeight(null);
+		pendingImage = UIUtil.readImage("/wanr.png").getImage();
+		pendingWidth = pendingImage.getWidth(null);
+		pendingHeight = pendingImage.getHeight(null);
 	}
 	
 }

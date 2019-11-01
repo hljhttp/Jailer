@@ -17,6 +17,7 @@ package net.sf.jailer.ui;
 
 import java.awt.CardLayout;
 import java.awt.Color;
+import java.awt.Container;
 import java.awt.Frame;
 import java.awt.Toolkit;
 import java.awt.event.ActionEvent;
@@ -37,13 +38,13 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.Callable;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import javax.swing.ImageIcon;
 import javax.swing.InputMap;
 import javax.swing.JComponent;
 import javax.swing.JDialog;
@@ -57,7 +58,6 @@ import javax.swing.UIManager;
 import javax.swing.UIManager.LookAndFeelInfo;
 import javax.swing.WindowConstants;
 
-import net.sf.jailer.CommandLine;
 import net.sf.jailer.ExecutionContext;
 import net.sf.jailer.JailerVersion;
 import net.sf.jailer.configuration.Configuration;
@@ -78,6 +78,10 @@ import net.sf.jailer.modelbuilder.ModelBuilder;
 import net.sf.jailer.render.HtmlDataModelRenderer;
 import net.sf.jailer.subsetting.ScriptFormat;
 import net.sf.jailer.ui.associationproposer.AssociationProposerView;
+import net.sf.jailer.ui.commandline.CommandLineInstance;
+import net.sf.jailer.ui.commandline.UICommandLine;
+import net.sf.jailer.ui.constraintcheck.ConstraintChecker;
+import net.sf.jailer.ui.databrowser.BookmarksPanel.BookmarkId;
 import net.sf.jailer.ui.databrowser.DataBrowser;
 import net.sf.jailer.ui.progress.ExportAndDeleteStageProgressListener;
 import net.sf.jailer.ui.util.AnimationController;
@@ -132,6 +136,12 @@ public class ExtractionModelFrame extends javax.swing.JFrame {
 		this(extractionModelFile, isHorizonal, null, executionContext);
 	}
 
+	private void storeLastSession() {
+   		BookmarkId bookmark;
+		bookmark = new BookmarkId(extractionModelEditor.extractionModelFile, ExtractionModelFrame.this.executionContext.getCurrentModelSubfolder(), ExtractionModelFrame.this.executionContext.getCurrentConnectionAlias(), null);
+		UISettings.storeLastSession(bookmark, "S");
+	}
+	
 	/**
 	 *  Creates new form ExtractionModelFrame.
 	 *  
@@ -195,7 +205,19 @@ public class ExtractionModelFrame extends javax.swing.JFrame {
 		} else {
 			dbConnectionDialog = new DbConnectionDialog(this, JailerVersion.APPLICATION_NAME, null, executionContext);
 		}
+        dbConnectionDialog.autoConnect();
 
+        final String bmFile = CommandLineInstance.getInstance().bookmark;
+		if (bmFile != null && !"".equals(bmFile) && new File(bmFile).exists()) {
+			showWizzard = false;
+			UIUtil.invokeLater(4, new Runnable() {
+				@Override
+				public void run() {
+					load(bmFile);
+				}
+			});
+		};
+        
 		updateMenuItems();
 
 		cycleViewDialog = new CyclesView(this);
@@ -207,6 +229,8 @@ public class ExtractionModelFrame extends javax.swing.JFrame {
 		}, executionContext);
 	}
 
+	private boolean showWizzard = true;
+	
 	private void initMenu() {
 		int mask = Toolkit.getDefaultToolkit().getMenuShortcutKeyMask();
 		if (mask != InputEvent.CTRL_MASK) {
@@ -367,6 +391,8 @@ public class ExtractionModelFrame extends javax.swing.JFrame {
         queryBuilder = new javax.swing.JMenuItem();
         cycleView = new javax.swing.JMenuItem();
         renderHtml = new javax.swing.JMenuItem();
+        consistencyCheckMenuItem = new javax.swing.JMenuItem();
+        createCLIItem = new javax.swing.JMenuItem();
         jMenu5 = new javax.swing.JMenu();
         horizontalLayoutMenuItem = new javax.swing.JCheckBoxMenuItem();
         jMenu4 = new javax.swing.JMenu();
@@ -800,6 +826,22 @@ public class ExtractionModelFrame extends javax.swing.JFrame {
         });
         jMenu3.add(renderHtml);
 
+        consistencyCheckMenuItem.setText("Referential Consistency Check");
+        consistencyCheckMenuItem.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                consistencyCheckMenuItemActionPerformed(evt);
+            }
+        });
+        jMenu3.add(consistencyCheckMenuItem);
+
+        createCLIItem.setText("Show Command Line");
+        createCLIItem.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                createCLIItemActionPerformed(evt);
+            }
+        });
+        jMenu3.add(createCLIItem);
+
         jMenuBar2.add(jMenu3);
 
         jMenu5.setText("Settings");
@@ -995,7 +1037,7 @@ public class ExtractionModelFrame extends javax.swing.JFrame {
 
 	private void helpForumActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_helpForumActionPerformed
 		try {
-			BrowserLauncher.openURL(new URI("https://sourceforge.net/p/jailer/discussion/"));
+			BrowserLauncher.openURL(new URI("https://sourceforge.net/p/jailer/discussion/"), this);
 		} catch (Exception e) {
 			UIUtil.showException(this, "Error", e);
 		}
@@ -1007,7 +1049,7 @@ public class ExtractionModelFrame extends javax.swing.JFrame {
 
 	private void tutorialActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_tutorialActionPerformed
 		try {
-			BrowserLauncher.openURL(new URI("http://jailer.sourceforge.net/exporting-data.htm"));
+			BrowserLauncher.openURL(new URI("http://jailer.sourceforge.net/exporting-data.htm"), this);
 		} catch (Exception e) {
 			UIUtil.showException(this, "Error", e);
 		}
@@ -1015,7 +1057,7 @@ public class ExtractionModelFrame extends javax.swing.JFrame {
 
 	private void helpContentActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_helpContentActionPerformed
 		try {
-			BrowserLauncher.openURL(new URI("http://jailer.sourceforge.net/home.htm"));
+			BrowserLauncher.openURL(new URI("http://jailer.sourceforge.net/home.htm"), this);
 		} catch (Exception e) {
 			UIUtil.showException(this, "Error", e);
 		}
@@ -1087,7 +1129,7 @@ public class ExtractionModelFrame extends javax.swing.JFrame {
 			DataBrowser dataBrowser;
 			try {
 				UIUtil.setWaitCursor(this);
-				dataBrowser = new DataBrowser(extractionModelEditor.dataModel, root, condition, dbConnectionDialog, true, executionContext);
+				dataBrowser = new DataBrowser(extractionModelEditor.dataModel, root, condition, dbConnectionDialog, null, true, executionContext);
 				if (dataBrowser.isReady()) {
 					dataBrowser.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
 					dataBrowser.setExtendedState(Frame.MAXIMIZED_BOTH);
@@ -1180,7 +1222,7 @@ public class ExtractionModelFrame extends javax.swing.JFrame {
 	
 	private String createTempFileName() {
 		String file;
-		String ts = new SimpleDateFormat("HH-mm-ss-SSS").format(new Date());
+		String ts = new SimpleDateFormat("HH-mm-ss-SSS", Locale.ENGLISH).format(new Date());
 		File newFile;
 		for (int i = 1; ; ++i) {
 			file = Environment.newFile("tmp").getPath();
@@ -1231,10 +1273,11 @@ public class ExtractionModelFrame extends javax.swing.JFrame {
 						args.add(tmpFileName != null? tmpFileName : extractionModelEditor.extractionModelFile);
 						dbConnectionDialog.addDbArgs(args);
 						BasicDataSource dataSource = new BasicDataSource(dbConnectionDialog.currentConnection.driverClass, dbConnectionDialog.currentConnection.url, dbConnectionDialog.currentConnection.user, dbConnectionDialog.getPassword(), 0, dbConnectionDialog.currentJarURLs()); 
-						Session session = SessionForUI.createSession(dataSource, dataSource.dbms, executionContext.getIsolationLevel(), this);
+						Session session = SessionForUI.createSession(dataSource, dataSource.dbms, executionContext.getIsolationLevel(), true, this);
 
 						final Set<Table> toCheck = new HashSet<Table>();
 						if (session != null) {
+							Session.setGlobalFallbackConnection(session.getConnection());
 							if (extractionModelEditor.dataModel != null) {
 								if (extractionModelEditor.extractionModel != null) {
 									if (extractionModelEditor.extractionModel.additionalSubjects != null) {
@@ -1273,6 +1316,7 @@ public class ExtractionModelFrame extends javax.swing.JFrame {
 									return true;
 								}
 							};
+							Session.setGlobalFallbackConnection(null);
 							session.shutDown();
 							if (exportDialog.isOk()) {
 								exportDialog.fillCLIArgs(args);
@@ -1360,6 +1404,7 @@ public class ExtractionModelFrame extends javax.swing.JFrame {
 				UIUtil.showException(this, "Error", e);
 			}
 		} finally {
+			Session.setGlobalFallbackConnection(null);
 			if (tmpFileName != null) {
 				new File(tmpFileName).delete();
 			}
@@ -1413,7 +1458,7 @@ public class ExtractionModelFrame extends javax.swing.JFrame {
 			File file = saveRestrictions();
 			args.add(file.getAbsolutePath());
 			UIUtil.runJailer(this, args, false, true, false, true, null, null, null /* dbConnectionDialog.getPassword() */, null, null, false, true, false, executionContext);
-			BrowserLauncher.openURL(Environment.newFile(table == null? "render/index.html" : ("render/" + HtmlDataModelRenderer.toFileName(table))).toURI());
+			BrowserLauncher.openURL(Environment.newFile(table == null? "render/index.html" : ("render/" + HtmlDataModelRenderer.toFileName(table))).toURI(), this);
 		} catch (Exception e) {
 			UIUtil.showException(this, "Error", e);
 		}
@@ -1450,7 +1495,7 @@ public class ExtractionModelFrame extends javax.swing.JFrame {
 		String extractionModelFile = extractionModelEditor.extractionModelFile;
 		if (extractionModelFile != null) {
 			extractionModelFile = new File(extractionModelFile).getName();
-			if (extractionModelFile.toLowerCase().endsWith(".jm")) {
+			if (extractionModelFile.toLowerCase(Locale.ENGLISH).endsWith(".jm")) {
 				file = new File(tempFileFolder, extractionModelFile.substring(0, extractionModelFile.length() - 3) + "-restrictions.jm");
 			} else {
 				file = new File(tempFileFolder, extractionModelFile + "-restrictions.jm");
@@ -1498,19 +1543,21 @@ public class ExtractionModelFrame extends javax.swing.JFrame {
 	private void loadActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_loadActionPerformed
 		try {
 			String modelFile = UIUtil.choseFile(null, "extractionmodel", "Load Extraction Model", ".jm", this, false, true, false);
-			try {
-				UIUtil.setWaitCursor(this);
-				if (modelFile != null && !toFront(modelFile)) {
-					String currentModelSubfolder = DataModelManager.getCurrentModelSubfolder(executionContext);
-					if (extractionModelEditor.extractionModelFile == null && !extractionModelEditor.needsSave
-							&& currentModelSubfolder != null && currentModelSubfolder.equals(ExtractionModel.loadDatamodelFolder(modelFile, executionContext))) {
-						load(modelFile);
-					} else {
-						createFrame(modelFile, false, executionContext);
+			if (modelFile != null && UIUtil.checkFileExistsAndWarn(modelFile, this)) {
+				try {
+					UIUtil.setWaitCursor(this);
+					if (modelFile != null && !toFront(modelFile)) {
+						String currentModelSubfolder = DataModelManager.getCurrentModelSubfolder(executionContext);
+						if (extractionModelEditor.extractionModelFile == null && !extractionModelEditor.needsSave
+								&& currentModelSubfolder != null && currentModelSubfolder.equals(ExtractionModel.loadDatamodelFolder(modelFile, executionContext))) {
+							load(modelFile);
+						} else {
+							createFrame(modelFile, false, executionContext);
+						}
 					}
+				} finally {
+					UIUtil.resetWaitCursor(this);
 				}
-			} finally {
-				UIUtil.resetWaitCursor(this);
 			}
 		} catch (Throwable t) {
 			UIUtil.showException(this, "Error", t);
@@ -1672,10 +1719,12 @@ public class ExtractionModelFrame extends javax.swing.JFrame {
 					"",
 					JOptionPane.YES_NO_OPTION,
 					JOptionPane.QUESTION_MESSAGE)) {
+				storeLastSession();
 				dispose();
 				UIUtil.checkTermination();
 			}
 		} else {
+			storeLastSession();
 			dispose();
 			UIUtil.checkTermination();
 		}
@@ -1881,6 +1930,33 @@ public class ExtractionModelFrame extends javax.swing.JFrame {
 		} 
     }//GEN-LAST:event_checkPKMenuItemActionPerformed
 
+    private void createCLIItemActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_createCLIItemActionPerformed
+		new CLIPanel(dbConnectionDialog, false, extractionModelEditor.extractionModelFile, null, null, null, executionContext).open(this);;
+    }//GEN-LAST:event_createCLIItemActionPerformed
+
+    @SuppressWarnings("serial")
+	private void consistencyCheckMenuItemActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_consistencyCheckMenuItemActionPerformed
+    	try {
+	    	if (dbConnectionDialog.isConnected || dbConnectionDialog.connect("Referential Consistency Check")) {
+	    		BasicDataSource dataSource = new BasicDataSource(dbConnectionDialog.currentConnection.driverClass, dbConnectionDialog.currentConnection.url, dbConnectionDialog.currentConnection.user, dbConnectionDialog.getPassword(), 0, dbConnectionDialog.currentJarURLs()); 
+				Session session = SessionForUI.createSession(dataSource, dataSource.dbms, executionContext.getIsolationLevel(), false, this);
+				if (session != null) {
+					try {
+						new ConstraintChecker(this, extractionModelEditor.dataModel, false, session) {
+				            @Override
+				            protected void openTableBrowser(Table source, String where) {
+				            }
+				        };
+					} finally {
+						session.shutDown();
+					}
+				}
+	    	}
+    	} catch (Exception e) {
+    		UIUtil.showException(this, "Error", e);
+    	}
+    }//GEN-LAST:event_consistencyCheckMenuItemActionPerformed
+
     private void executeAndReload(Callable<Boolean> callable) {
         File tmpFile = null;
         String extractionModelFile = extractionModelEditor.extractionModelFile;
@@ -1987,9 +2063,11 @@ public class ExtractionModelFrame extends javax.swing.JFrame {
 		}
 		try {
 			// create initial data-model files
-			File file = new File(DataModel.getDatamodelFolder(new ExecutionContext(CommandLineInstance.getInstance())));
-			if (!file.exists()) {
-				file.mkdir();
+			if (CommandLineInstance.getInstance().datamodelFolder == null) {
+				File file = new File(DataModel.getDatamodelFolder(new ExecutionContext()));
+				if (!file.exists()) {
+					file.mkdir();
+				}
 			}
 		} catch (Exception e) {
 		}
@@ -2001,6 +2079,7 @@ public class ExtractionModelFrame extends javax.swing.JFrame {
 						for (LookAndFeelInfo info : UIManager.getInstalledLookAndFeels()) {
 					        if ("Nimbus".equals(info.getName())) {
 					            UIManager.setLookAndFeel(info.getClassName());
+                                Environment.nimbus = true;
 					            break;
 					        }
 					    }
@@ -2023,19 +2102,19 @@ public class ExtractionModelFrame extends javax.swing.JFrame {
 				
 				String file = null;
 				try {
-					CommandLine commandLine = CommandLineInstance.getInstance();
+					UICommandLine commandLine = CommandLineInstance.getInstance();
 					if (commandLine.arguments != null) {
 						if (commandLine.arguments.size() > 0) {
 							file = commandLine.arguments.get(0);
-						}	
+						}
 					}
 					createFrame(file, true, null);
 				} catch (Throwable e) {
 					e.printStackTrace();
 					UIUtil.showException(null, "Error", e);
+					UIUtil.checkTermination();
 				}
 			}
-
 		});
 	}
 	
@@ -2065,10 +2144,10 @@ public class ExtractionModelFrame extends javax.swing.JFrame {
 		boolean isHorizonal = false;
 		ExtractionModelFrame extractionModelFrame = new ExtractionModelFrame(file, isHorizonal, connectionDialog, executionContext);
 		try {
-			extractionModelFrame.setIconImage(new ImageIcon(extractionModelFrame.getClass().getResource("/net/sf/jailer/ui/resource/jailer.png")).getImage());
+			extractionModelFrame.setIconImage(UIUtil.readImage("/jailerlight.png").getImage());
 		} catch (Throwable t) {
 			try {
-				extractionModelFrame.setIconImage(new ImageIcon(extractionModelFrame.getClass().getResource("/net/sf/jailer/ui/resource/jailer.gif")).getImage());
+				extractionModelFrame.setIconImage(UIUtil.readImage("/jailer.gif").getImage());
 			} catch (Throwable t2) {
 			}
 		}
@@ -2090,16 +2169,24 @@ public class ExtractionModelFrame extends javax.swing.JFrame {
 	public static void createFrame(String file, final boolean withStartupWizzard, ExecutionContext executionContext) {
 		try {
 			final String finalFile = file;
-			if (file != null && new File(file).exists()) {
+			if (file != null) {
 				if (executionContext == null) {
-					executionContext = new ExecutionContext(CommandLineInstance.getInstance());
+					executionContext = new ExecutionContext();
 				} else {
 					executionContext = new ExecutionContext(executionContext);
 				}
+				DataModelManagerDialog.setCurrentBaseFolder(executionContext);
 				DataModelManager.setCurrentModelSubfolder(ExtractionModel.loadDatamodelFolder(file, executionContext), executionContext);
+				
+				String datamodelFolder = CommandLineInstance.getInstance().datamodelFolder;
+				if (datamodelFolder != null) {
+					executionContext.setDatamodelFolder(new File(datamodelFolder).getParent());
+					executionContext.setCurrentModelSubfolder(new File(datamodelFolder).getName());
+				}
+				
 				createFrame(finalFile, true, true, null, executionContext);
 			} else {
-				DataModelManagerDialog dataModelManagerDialog = new DataModelManagerDialog(JailerVersion.APPLICATION_NAME + " " + JailerVersion.VERSION + " - Database Subsetting Tool", true) {
+				DataModelManagerDialog dataModelManagerDialog = new DataModelManagerDialog(JailerVersion.APPLICATION_NAME + " " + JailerVersion.VERSION + " - Database Subsetting Tool", true, "S") {
 					@Override
 					protected void onLoadExtractionmodel(String modelFile, ExecutionContext executionContext) {
 						createFrame(modelFile, false, executionContext);
@@ -2109,6 +2196,7 @@ public class ExtractionModelFrame extends javax.swing.JFrame {
 						ExtractionModelFrame extractionModelFrame = null;
 						try {
 							extractionModelFrame = createFrame(null, true, true, connectionDialog, executionContext);
+							CommandLineInstance.clear();
 							final ExtractionModelFrame finalExtractionModelFrame = extractionModelFrame;
 							UIUtil.invokeLater(new Runnable() {
 								@SuppressWarnings("serial")
@@ -2119,7 +2207,7 @@ public class ExtractionModelFrame extends javax.swing.JFrame {
 									} catch (Exception e) {
 										UIUtil.showException(finalExtractionModelFrame, "Error", e);
 									}
-									if (withStartupWizzard) {
+									if (withStartupWizzard && finalExtractionModelFrame.showWizzard) {
 										new StartupWizzardDialog(finalExtractionModelFrame) {
 											@Override
 											protected void onClose() {
@@ -2141,14 +2229,16 @@ public class ExtractionModelFrame extends javax.swing.JFrame {
 							});
 						} catch (Exception e) {
 							UIUtil.showException(extractionModelFrame, "Error", e);
+							UIUtil.checkTermination();
 						}
 					}
 					private static final long serialVersionUID = 1L;
 				};
-				dataModelManagerDialog.setVisible(true);
+				dataModelManagerDialog.start();
 			}
 		} catch (Exception e) {
 			UIUtil.showException(null, "Error", e);
+			UIUtil.checkTermination();
 		}
 	}
 
@@ -2161,12 +2251,25 @@ public class ExtractionModelFrame extends javax.swing.JFrame {
 		extractionModelEditor.markDirty();
 	}
 
-	public JComponent tearOutGraphViewContainer() {
+	public JComponent tearOutGraphViewContainer(JFrame ownerFrame) {
 		extractionModelEditor.layeredPane.remove(extractionModelEditor.inspectorHolder);
 		extractionModelEditor.focusPanel.setVisible(false);
 		extractionModelEditor.layeredPane.remove(extractionModelEditor.toolBarPanel);
 		extractionModelEditor.addAdditionalPopupMenuItems(
 				Arrays.asList(collapseAll, expandAll, expandAllVisible, refresh));
+		AnimationController.registerWindow(ownerFrame, new AnimationController.AnimationControl() {
+			@Override
+			public void setEnabled(boolean enabled) {
+				if (extractionModelEditor != null && extractionModelEditor.graphView != null) {
+					extractionModelEditor.graphView.setAnimationEnabled(enabled);
+				}
+			}
+		});
+		
+		Container parent = extractionModelEditor.undoViewHolder.getParent();
+		if (parent != null) {
+			parent.remove(extractionModelEditor.undoViewHolder);
+		}
 		return extractionModelEditor.layeredPane;
 	}
 
@@ -2189,6 +2292,8 @@ public class ExtractionModelFrame extends javax.swing.JFrame {
     private javax.swing.JMenuItem collapseAll;
     private javax.swing.JMenuItem columnOrderItem;
     private javax.swing.JCheckBoxMenuItem connectDb;
+    private javax.swing.JMenuItem consistencyCheckMenuItem;
+    private javax.swing.JMenuItem createCLIItem;
     private javax.swing.JMenuItem cycleView;
     private javax.swing.JMenuItem dataExport;
     private javax.swing.JMenuItem dataImport;

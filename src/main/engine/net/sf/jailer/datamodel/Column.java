@@ -16,6 +16,7 @@
 
 package net.sf.jailer.datamodel;
 
+import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -147,12 +148,12 @@ public class Column {
 	/**
 	 * Parses a column declaration in SQL syntax.
 	 * 
-	 * @param columnDeclaration the column declaration in SQL syntax
+	 * @param theColumnDeclaration the column declaration in SQL syntax
 	 * @param columnName (optional) name of column
 	 * @return the column
 	 */
-	public static Column parse(String columnName, String columnDeclaration) {
-		columnDeclaration = columnDeclaration.trim();
+	public static Column parse(String columnName, String theColumnDeclaration) {
+		String columnDeclaration = theColumnDeclaration.trim();
 		
 		// work-around for bug 2849047
 		String normalizedcolumnDeclaration = PATTERN_IDENTITY.matcher(columnDeclaration).replaceFirst("");
@@ -169,19 +170,19 @@ public class Column {
 		}
 		
 		boolean isNullable = false;
-		if (columnDeclaration.toLowerCase().endsWith(" null")) {
+		if (columnDeclaration.toLowerCase(Locale.ENGLISH).endsWith(" null")) {
 			isNullable = true;
 			columnDeclaration = columnDeclaration.substring(0, columnDeclaration.length() - 5).trim();
 		}
 
 		boolean isVirtual = false;
-		if (columnDeclaration.toLowerCase().endsWith(" virtual")) {
+		if (columnDeclaration.toLowerCase(Locale.ENGLISH).endsWith(" virtual")) {
 			isVirtual = true;
 			columnDeclaration = columnDeclaration.substring(0, columnDeclaration.length() - 8).trim();
 		}
 		
 		boolean isIdent = false;
-		if (columnDeclaration.toLowerCase().endsWith(" identity")) {
+		if (columnDeclaration.toLowerCase(Locale.ENGLISH).endsWith(" identity")) {
 			isIdent = true;
 			columnDeclaration = columnDeclaration.substring(0, columnDeclaration.length() - 9).trim();
 		}
@@ -228,7 +229,7 @@ public class Column {
 					name = matcher.group(1);
 					type = matcher.group(2);
 				} else {
-					throw new RuntimeException("can't parse primary-key: " + columnDeclaration);
+					throw new RuntimeException("invalid column declaration: " + theColumnDeclaration);
 				}
 			}
 		}
